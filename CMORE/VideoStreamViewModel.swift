@@ -10,21 +10,27 @@ import UIKit
 import UniformTypeIdentifiers
 
 // MARK: - VideoStreamViewModel
-/// This class manages camera streaming and video processing logic
+/// This class manages camera recording functionality with a simplified interface
 /// It uses the MVVM (Model-View-ViewModel) pattern to separate business logic from UI
-/// SIMPLIFICATION SUGGESTIONS:
-/// 1. Consider splitting this into separate classes for camera and video file handling
-/// 2. Error handling could be more robust with proper user feedback
-/// 3. The frame processing could be made optional to reduce complexity
+/// SIMPLIFIED: Removed video file loading, automatic camera startup, single recording button
 class VideoStreamViewModel: NSObject, ObservableObject {
     // MARK: - Published Properties
     // @Published automatically notifies the UI when these values change
     
-    /// The current image being displayed (from camera or video file)
+    /// The current image being displayed from the camera
     @Published var image: UIImage?
     
-    /// Whether the camera is currently streaming
-    @Published var isStreaming = false
+    /// Whether the camera is currently recording video
+    @Published var isRecording = false
+    
+    /// Status message for recording operations
+    @Published var recordingStatusMessage: String?
+    
+    /// Whether to show the save confirmation dialog
+    @Published var showSaveConfirmation = false
+    
+    /// The URL of the current video being processed (temporary)
+    private var currentVideoURL: URL?
     
     // MARK: - Private Properties
     
@@ -34,8 +40,8 @@ class VideoStreamViewModel: NSObject, ObservableObject {
     /// Handles video data output from the camera
     private var videoOutput: AVCaptureVideoDataOutput?
     
-    /// Preview layer for camera (currently unused but available for future use)
-    private var previewLayer: AVCaptureVideoPreviewLayer?
+    /// Handles movie file output for recording
+    private var movieOutput: AVCaptureMovieFileOutput?
     
     /// Background queue for processing video frames (keeps UI responsive)
     private let videoOutputQueue = DispatchQueue(label: "videoOutputQueue", qos: .userInitiated)
@@ -52,36 +58,58 @@ class VideoStreamViewModel: NSObject, ObservableObject {
     
     /// Clean up when the ViewModel is destroyed
     deinit {
-        stopStreaming()
+        stopCamera()
     }
     
     // MARK: - Public Methods
     
-    /// Toggles camera streaming on/off
-    func toggleStreaming() {
-        if isStreaming {
-            stopStreaming()
+    /// Starts the camera automatically when the app launches
+    func startCameraAutomatically() {
+        guard captureSession?.isRunning != true else { return }
+        startCamera()
+    }
+    
+    /// Toggles video recording on/off (main functionality)
+    func toggleRecording() {
+        if isRecording {
+            stopRecording()
         } else {
-            startStreaming()
+            startRecording()
         }
     }
     
-    /// Loads a video file and displays its first frame
-    /// - Parameter url: The URL of the video file to load
-    func loadVideo(from url: URL) {
-        // Stop current streaming if active to avoid conflicts
-        if isStreaming {
-            stopStreaming()
-        }
+    /// Saves the pending video to Photos library (called when user confirms)
+    func saveVideoToPhotos() {
+        guard let videoURL = currentVideoURL else { return }
+        saveVideoToPhotosLibrary(videoURL)
+        currentVideoURL = nil
+        showSaveConfirmation = false
+    }
+    
+    /// Discards the pending video (called when user declines)
+    func discardVideo() {
+        guard let videoURL = currentVideoURL else { return }
         
-        // Load and display the first frame from the video
-        loadVideoFrame(from: url)
+        // Delete the temporary file
+        try? FileManager.default.removeItem(at: videoURL)
+        
+        // Update UI
+        Task { @MainActor in
+            self.recordingStatusMessage = "Video discarded"
+            self.currentVideoURL = nil
+            self.showSaveConfirmation = false
+            
+            // Clear message after a delay
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                self.recordingStatusMessage = nil
+            }
+        }
     }
     
     // MARK: - Private Methods
     
     /// Sets up the camera capture session
-    /// SIMPLIFICATION SUGGESTION: Add better error handling and user feedback
+    /// Camera starts automatically, no separate streaming control needed
     private func setupCamera() {
         // Get the default wide-angle camera (back camera)
         guard let camera = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back) else {
@@ -111,73 +139,87 @@ class VideoStreamViewModel: NSObject, ObservableObject {
                 captureSession?.addOutput(videoOutput!)
             }
             
+            // Set up movie file output for recording
+            movieOutput = AVCaptureMovieFileOutput()
+            
+            // Add movie output to the session
+            if captureSession?.canAddOutput(movieOutput!) == true {
+                captureSession?.addOutput(movieOutput!)
+            }
+            
         } catch {
             print("Error setting up camera: \(error)")
         }
     }
     
-    /// Starts the camera streaming
-    private func startStreaming() {
+    /// Starts the camera feed (called automatically)
+    private func startCamera() {
         guard let captureSession = captureSession else { return }
         
         // Use Task for async operation to avoid blocking the UI
         Task {
             captureSession.startRunning()
-            // Update UI on main thread
-            await MainActor.run {
-                self.isStreaming = true
-            }
         }
     }
     
-    /// Stops the camera streaming
-    private func stopStreaming() {
+    /// Stops the camera feed (called when app is destroyed)
+    private func stopCamera() {
         // Use Task for async operation
         Task {
             captureSession?.stopRunning()
-            // Update UI on main thread
-            await MainActor.run {
-                self.isStreaming = false
-            }
         }
     }
     
-    /// Loads and displays the first frame from a video file
-    /// - Parameter url: The URL of the video file
-    /// SIMPLIFICATION SUGGESTION: Could add progress indicator for long videos
-    private func loadVideoFrame(from url: URL) {
-        Task {
-            // Create an asset from the video file
-            let asset = AVURLAsset(url: url)
-            let imageGenerator = AVAssetImageGenerator(asset: asset)
-            
-            // Ensure the image orientation matches the video
-            imageGenerator.appliesPreferredTrackTransform = true
-            
-            // Get the frame at time 0 (first frame)
-            let time = CMTime(seconds: 0, preferredTimescale: 1)
-            
-            do {
-                // Generate the image from the video
-                let cgImage = try await imageGenerator.image(at: time).image
-                let uiImage = UIImage(cgImage: cgImage)
-                
-                // Update UI on main thread
-                await MainActor.run {
-                    self.image = uiImage
-                }
-            } catch {
-                print("Error loading video frame: \(error)")
-            }
+    /// Starts video recording to a file
+    private func startRecording() {
+        guard let movieOutput = movieOutput else {
+            print("Movie output not available")
+            return
+        }
+        
+        // Don't start recording if already recording
+        guard !movieOutput.isRecording else { return }
+        
+        // Create a unique filename for the recorded video
+        let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
+        let videoFileName = "CMORE_Recording_\(Date().timeIntervalSince1970).mov"
+        let outputURL = documentsPath.appendingPathComponent(videoFileName)
+        
+        // Remove any existing file at this location
+        if FileManager.default.fileExists(atPath: outputURL.path) {
+            try? FileManager.default.removeItem(at: outputURL)
+        }
+        
+        // Start recording to the file
+        movieOutput.startRecording(to: outputURL, recordingDelegate: self)
+        
+        // Update UI
+        Task { @MainActor in
+            self.isRecording = true
+            self.recordingStatusMessage = "Recording started..."
+        }
+    }
+    
+    /// Stops video recording
+    private func stopRecording() {
+        guard let movieOutput = movieOutput else { return }
+        
+        if movieOutput.isRecording {
+            movieOutput.stopRecording()
+        }
+        
+        // Update UI
+        Task { @MainActor in
+            self.isRecording = false
+            self.recordingStatusMessage = "Recording stopped"
         }
     }
 }
 
 // MARK: - AVCaptureVideoDataOutputSampleBufferDelegate
-/// This extension handles camera frame data as it comes in
-/// SIMPLIFICATION SUGGESTION: This could be simplified by making frame processing optional
+/// This extension handles camera frame data for live preview display
 extension VideoStreamViewModel: AVCaptureVideoDataOutputSampleBufferDelegate {
-    /// Called for each new camera frame
+    /// Called for each new camera frame - displays live preview
     /// - Parameters:
     ///   - output: The capture output that produced the frame
     ///   - sampleBuffer: The frame data
@@ -200,6 +242,78 @@ extension VideoStreamViewModel: AVCaptureVideoDataOutputSampleBufferDelegate {
         // Update UI on main thread
         Task { @MainActor in
             self.image = uiImage
+        }
+    }
+}
+
+// MARK: - AVCaptureFileOutputRecordingDelegate
+/// This extension handles video recording events (start, finish, errors)
+extension VideoStreamViewModel: AVCaptureFileOutputRecordingDelegate {
+    /// Called when recording starts successfully
+    /// - Parameters:
+    ///   - output: The file output that started recording
+    ///   - fileURL: The URL where the video is being saved
+    ///   - connections: The connections involved in recording
+    func fileOutput(_ output: AVCaptureFileOutput, didStartRecordingTo fileURL: URL, from connections: [AVCaptureConnection]) {
+        Task { @MainActor in
+            self.recordingStatusMessage = "Recording to: \(fileURL.lastPathComponent)"
+        }
+    }
+    
+    /// Called when recording finishes (successfully or with error)
+    /// - Parameters:
+    ///   - output: The file output that finished recording
+    ///   - outputFileURL: The URL where the video was saved
+    ///   - connections: The connections involved in recording
+    ///   - error: Any error that occurred during recording
+    func fileOutput(_ output: AVCaptureFileOutput, didFinishRecordingTo outputFileURL: URL, from connections: [AVCaptureConnection], error: Error?) {
+        Task { @MainActor in
+            if let error = error {
+                self.recordingStatusMessage = "Recording failed: \(error.localizedDescription)"
+                print("Recording error: \(error)")
+            } else {
+                // Successfully recorded - ask user to save or discard (one-time choice)
+                self.currentVideoURL = outputFileURL
+                self.recordingStatusMessage = "Recording completed! Save or discard?"
+                self.showSaveConfirmation = true
+            }
+        }
+    }
+    
+    /// Saves the recorded video to the Photos library
+    /// - Parameter videoURL: The URL of the recorded video file
+    private func saveVideoToPhotosLibrary(_ videoURL: URL) {
+        // Check if the file exists
+        guard FileManager.default.fileExists(atPath: videoURL.path) else {
+            recordingStatusMessage = "Error: Video file not found"
+            return
+        }
+        
+        // Save to Photos library
+        UISaveVideoAtPathToSavedPhotosAlbum(videoURL.path, self, #selector(video(_:didFinishSavingWithError:contextInfo:)), nil)
+    }
+    
+    /// Callback for Photos library save operation
+    /// - Parameters:
+    ///   - videoPath: Path to the video file
+    ///   - error: Any error that occurred during saving
+    ///   - contextInfo: Additional context (unused)
+    @objc private func video(_ videoPath: String, didFinishSavingWithError error: Error?, contextInfo: UnsafeRawPointer) {
+        Task { @MainActor in
+            if let error = error {
+                self.recordingStatusMessage = "Failed to save video: \(error.localizedDescription)"
+            } else {
+                self.recordingStatusMessage = "Video saved to Photos!"
+                
+                // Clean up the temporary file after successful save
+                let url = URL(fileURLWithPath: videoPath)
+                try? FileManager.default.removeItem(at: url)
+                
+                // Clear message after a delay
+                DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+                    self.recordingStatusMessage = nil
+                }
+            }
         }
     }
 }
