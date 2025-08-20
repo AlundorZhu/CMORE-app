@@ -19,6 +19,7 @@ class VideoStreamViewModel: NSObject, ObservableObject {
     private var previewLayer: AVCaptureVideoPreviewLayer?
     
     private let videoOutputQueue = DispatchQueue(label: "videoOutputQueue", qos: .userInitiated)
+    private let frameProcessor = FrameProcessor()
     
     override init() {
         super.init()
@@ -125,10 +126,11 @@ extension VideoStreamViewModel: AVCaptureVideoDataOutputSampleBufferDelegate {
         guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
         
         let ciImage = CIImage(cvPixelBuffer: pixelBuffer)
+        
+        frameProcessor.processFrame(ciImage)
+
         let context = CIContext()
-        
         guard let cgImage = context.createCGImage(ciImage, from: ciImage.extent) else { return }
-        
         let uiImage = UIImage(cgImage: cgImage)
         
         Task { @MainActor in
