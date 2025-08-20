@@ -5,6 +5,7 @@
 //  Created by ZIQIANG ZHU on 8/19/25.
 //
 import SwiftUI
+import AVFoundation
 
 // MARK: - Main Content View
 /// This is the root view of our app - it simply displays the VideoStreamView
@@ -29,13 +30,12 @@ struct VideoStreamView: View {
             // MARK: - Video Display Area
             // ZStack layers elements on top of each other
             ZStack {
-                // Show the current camera frame if available, otherwise show black background
-                if let image = viewModel.image {
-                    Image(uiImage: image)
-                        .resizable() // Allows the image to be resized
-                        .aspectRatio(contentMode: .fit) // Maintains aspect ratio while fitting
+                // Show the live camera preview using preview layer
+                if let session = viewModel.captureSession {
+                    CameraPreviewView(session: session)
+                        .clipped() // Clip the preview to the frame bounds
                 } else {
-                    // Placeholder when no camera feed is available
+                    // Placeholder when camera is not available
                     Color.black
                         .overlay(
                             Text("Camera will appear here")
@@ -43,8 +43,40 @@ struct VideoStreamView: View {
                                 .font(.title2)
                         )
                 }
+                
+                // Recording overlay when recording is active
+                if viewModel.isRecording {
+                    VStack {
+                        HStack {
+                            // Recording indicator (red dot + text)
+                            HStack(spacing: 8) {
+                                Circle()
+                                    .fill(Color.red)
+                                    .frame(width: 12, height: 12)
+                                    .scaleEffect(viewModel.isRecording ? 1.0 : 0.8)
+                                    .animation(.easeInOut(duration: 0.8).repeatForever(autoreverses: true), value: viewModel.isRecording)
+                                
+                                Text("REC")
+                                    .font(.headline)
+                                    .fontWeight(.bold)
+                                    .foregroundColor(.red)
+                            }
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
+                            .background(Color.black.opacity(0.7))
+                            .cornerRadius(15)
+                            
+                            Spacer()
+                        }
+                        .padding(.top, 16)
+                        .padding(.horizontal, 16)
+                        
+                        Spacer()
+                    }
+                }
             }
             .frame(height: 400) // Fixed height for the video display area
+            .cornerRadius(12) // Rounded corners for the camera view
             
             // MARK: - Single Recording Button
             // Simple one-button interface for recording

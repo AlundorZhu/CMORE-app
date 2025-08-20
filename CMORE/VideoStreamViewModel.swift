@@ -17,9 +17,6 @@ class VideoStreamViewModel: NSObject, ObservableObject {
     // MARK: - Published Properties
     // @Published automatically notifies the UI when these values change
     
-    /// The current image being displayed from the camera
-    @Published var image: UIImage?
-    
     /// Whether the camera is currently recording video
     @Published var isRecording = false
     
@@ -32,10 +29,17 @@ class VideoStreamViewModel: NSObject, ObservableObject {
     /// The URL of the current video being processed (temporary)
     private var currentVideoURL: URL?
     
+    // MARK: - Public Properties
+    
+    /// The main camera capture session - exposed for preview layer
+    var captureSession: AVCaptureSession? {
+        return _captureSession
+    }
+    
     // MARK: - Private Properties
     
     /// The main camera capture session - manages camera input and output
-    private var captureSession: AVCaptureSession?
+    private var _captureSession: AVCaptureSession?
     
     /// Handles video data output from the camera
     private var videoOutput: AVCaptureVideoDataOutput?
@@ -65,7 +69,7 @@ class VideoStreamViewModel: NSObject, ObservableObject {
     
     /// Starts the camera automatically when the app launches
     func startCameraAutomatically() {
-        guard captureSession?.isRunning != true else { return }
+        guard _captureSession?.isRunning != true else { return }
         startCamera()
     }
     
@@ -119,32 +123,32 @@ class VideoStreamViewModel: NSObject, ObservableObject {
         
         do {
             // Create and configure the capture session
-            captureSession = AVCaptureSession()
-            captureSession?.sessionPreset = .medium // Medium quality for better performance
+            _captureSession = AVCaptureSession()
+            _captureSession?.sessionPreset = .medium // Medium quality for better performance
             
             // Create input from the camera
             let cameraInput = try AVCaptureDeviceInput(device: camera)
             
             // Add camera input to the session
-            if captureSession?.canAddInput(cameraInput) == true {
-                captureSession?.addInput(cameraInput)
+            if _captureSession?.canAddInput(cameraInput) == true {
+                _captureSession?.addInput(cameraInput)
             }
             
-            // Set up video output to receive frames
+            // Set up video output to receive frames for face detection only
             videoOutput = AVCaptureVideoDataOutput()
             videoOutput?.setSampleBufferDelegate(self, queue: videoOutputQueue)
             
             // Add video output to the session
-            if captureSession?.canAddOutput(videoOutput!) == true {
-                captureSession?.addOutput(videoOutput!)
+            if _captureSession?.canAddOutput(videoOutput!) == true {
+                _captureSession?.addOutput(videoOutput!)
             }
             
             // Set up movie file output for recording
             movieOutput = AVCaptureMovieFileOutput()
             
             // Add movie output to the session
-            if captureSession?.canAddOutput(movieOutput!) == true {
-                captureSession?.addOutput(movieOutput!)
+            if _captureSession?.canAddOutput(movieOutput!) == true {
+                _captureSession?.addOutput(movieOutput!)
             }
             
         } catch {
@@ -154,7 +158,7 @@ class VideoStreamViewModel: NSObject, ObservableObject {
     
     /// Starts the camera feed (called automatically)
     private func startCamera() {
-        guard let captureSession = captureSession else { return }
+        guard let captureSession = _captureSession else { return }
         
         // Use Task for async operation to avoid blocking the UI
         Task {
@@ -166,7 +170,7 @@ class VideoStreamViewModel: NSObject, ObservableObject {
     private func stopCamera() {
         // Use Task for async operation
         Task {
-            captureSession?.stopRunning()
+            _captureSession?.stopRunning()
         }
     }
     
@@ -217,9 +221,9 @@ class VideoStreamViewModel: NSObject, ObservableObject {
 }
 
 // MARK: - AVCaptureVideoDataOutputSampleBufferDelegate
-/// This extension handles camera frame data for live preview display
+/// This extension handles camera frame data for face detection processing only
 extension VideoStreamViewModel: AVCaptureVideoDataOutputSampleBufferDelegate {
-    /// Called for each new camera frame - displays live preview
+    /// Called for each new camera frame - processes for face detection only
     /// - Parameters:
     ///   - output: The capture output that produced the frame
     ///   - sampleBuffer: The frame data
@@ -233,16 +237,6 @@ extension VideoStreamViewModel: AVCaptureVideoDataOutputSampleBufferDelegate {
         
         // Process the frame for face detection (runs on background thread)
         frameProcessor.processFrame(ciImage)
-
-        // Convert to UIImage for display
-        let context = CIContext()
-        guard let cgImage = context.createCGImage(ciImage, from: ciImage.extent) else { return }
-        let uiImage = UIImage(cgImage: cgImage)
-        
-        // Update UI on main thread
-        Task { @MainActor in
-            self.image = uiImage
-        }
     }
 }
 
