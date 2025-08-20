@@ -12,10 +12,6 @@ struct ContentView: View {
     }
 }
 
-#Preview {
-    ContentView()
-}
-
 struct VideoStreamView: View {
     @StateObject private var viewModel = VideoStreamViewModel()
     @State private var isShowingVideoPicker = false
