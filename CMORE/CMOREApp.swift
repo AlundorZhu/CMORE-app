@@ -16,7 +16,7 @@ struct CMOREApp: App {
         // WindowGroup creates the main window for our app
         // ContentView() is the first screen users will see
         WindowGroup {
-            ContentView()
+            VideoStreamView()
         }
     }
 }

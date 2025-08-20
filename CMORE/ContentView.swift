@@ -7,16 +7,6 @@
 import SwiftUI
 import AVFoundation
 
-// MARK: - Main Content View
-/// This is the root view of our app - it simply displays the VideoStreamView
-/// SIMPLIFICATION SUGGESTION: This could be removed entirely and VideoStreamView
-/// could be used directly in CMOREApp.swift to reduce unnecessary nesting
-struct ContentView: View {
-    var body: some View {
-        VideoStreamView()
-    }
-}
-
 // MARK: - Video Stream Interface
 /// This view handles camera recording functionality with a simple one-button interface
 struct VideoStreamView: View {
@@ -130,5 +120,5 @@ struct VideoStreamView: View {
 // MARK: - Preview
 /// SwiftUI preview for development - allows seeing the UI in Xcode's canvas
 #Preview {
-    ContentView()
+    VideoStreamView()
 }
