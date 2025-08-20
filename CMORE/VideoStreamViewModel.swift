@@ -80,35 +80,36 @@ class VideoStreamViewModel: NSObject, ObservableObject {
     private func startStreaming() {
         guard let captureSession = captureSession else { return }
         
-        DispatchQueue.global(qos: .background).async {
+        Task {
             captureSession.startRunning()
-        }
-        
-        DispatchQueue.main.async {
-            self.isStreaming = true
+            await MainActor.run {
+                self.isStreaming = true
+            }
         }
     }
     
     private func stopStreaming() {
-        captureSession?.stopRunning()
-        DispatchQueue.main.async {
-            self.isStreaming = false
+        Task {
+            captureSession?.stopRunning()
+            await MainActor.run {
+                self.isStreaming = false
+            }
         }
     }
     
     private func loadVideoFrame(from url: URL) {
-        let asset = AVAsset(url: url)
-        let imageGenerator = AVAssetImageGenerator(asset: asset)
-        imageGenerator.appliesPreferredTrackTransform = true
-        
-        let time = CMTime(seconds: 0, preferredTimescale: 1)
-        
-        DispatchQueue.global(qos: .background).async {
+        Task {
+            let asset = AVURLAsset(url: url)
+            let imageGenerator = AVAssetImageGenerator(asset: asset)
+            imageGenerator.appliesPreferredTrackTransform = true
+            
+            let time = CMTime(seconds: 0, preferredTimescale: 1)
+            
             do {
-                let cgImage = try imageGenerator.copyCGImage(at: time, actualTime: nil)
+                let cgImage = try await imageGenerator.image(at: time).image
                 let uiImage = UIImage(cgImage: cgImage)
                 
-                DispatchQueue.main.async {
+                await MainActor.run {
                     self.image = uiImage
                 }
             } catch {
@@ -130,8 +131,9 @@ extension VideoStreamViewModel: AVCaptureVideoDataOutputSampleBufferDelegate {
         
         let uiImage = UIImage(cgImage: cgImage)
         
-        DispatchQueue.main.async {
+        Task { @MainActor in
             self.image = uiImage
         }
     }
 }
+

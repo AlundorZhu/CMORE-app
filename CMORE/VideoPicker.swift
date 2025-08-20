@@ -6,6 +6,7 @@
 //
 import SwiftUI
 import PhotosUI
+import Foundation
 
 struct VideoPicker: UIViewControllerRepresentable {
     let completion: (URL) -> Void
@@ -35,25 +36,39 @@ struct VideoPicker: UIViewControllerRepresentable {
         }
         
         func picker(_ picker: PHPickerViewController, didFinishPicking results: [PHPickerResult]) {
-            parent.dismiss()
-            
-            guard let result = results.first else { return }
-            
+            guard let result = results.first else { 
+                parent.dismiss()
+                return 
+            }
+
             result.itemProvider.loadFileRepresentation(forTypeIdentifier: UTType.movie.identifier) { url, error in
-                guard let url = url, error == nil else {
-                    print("Error loading video: \(error?.localizedDescription ?? "Unknown error")")
-                    return
+                // Always dismiss on main thread after processing
+                defer {
+                    DispatchQueue.main.async {
+                        self.parent.dismiss()
+                    }
                 }
                 
-                // Copy to temporary location since the provided URL might not be accessible later
-                let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".mov")
-                
+                if let error = error {
+                    print("Error loading video file: \(error)")
+                    return
+                }
+
+                guard let url = url else {
+                    print("Failed to get video URL")
+                    return
+                }
+
                 do {
+                    // Copy to temporary location since the provided URL might not be accessible later
+                    let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".mov")
+                    
                     if FileManager.default.fileExists(atPath: tempURL.path) {
                         try FileManager.default.removeItem(at: tempURL)
                     }
                     try FileManager.default.copyItem(at: url, to: tempURL)
                     
+                    // Call completion on main thread
                     DispatchQueue.main.async {
                         self.parent.completion(tempURL)
                     }
