@@ -95,9 +95,8 @@ class VideoStreamViewModel: NSObject, ObservableObject {
             self.showSaveConfirmation = false
             
             // Clear message after a delay
-            DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
-                self.recordingStatusMessage = nil
-            }
+            try? await Task.sleep(for: .seconds(2))
+            self.recordingStatusMessage = nil
         }
     }
     
@@ -298,9 +297,8 @@ extension VideoStreamViewModel: AVCaptureFileOutputRecordingDelegate {
                 try? FileManager.default.removeItem(at: url)
                 
                 // Clear message after a delay
-                DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
-                    self.recordingStatusMessage = nil
-                }
+                try? await Task.sleep(for: .seconds(2))
+                self.recordingStatusMessage = nil
             }
         }
     }
