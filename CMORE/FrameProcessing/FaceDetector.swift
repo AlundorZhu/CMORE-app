@@ -8,16 +8,18 @@
 import Foundation
 import Vision
 import CoreImage
+import CoreGraphics
+import UIKit
 
 // MARK: - Face Detector
 /// Uses Apple's Vision framework to detect faces in images/video frames
-/// SIMPLIFICATION SUGGESTIONS:
-/// 1. Could add delegate pattern to communicate results back to UI
-/// 2. Could add configuration options for detection accuracy vs. performance
-/// 3. Results are currently only printed - could be used to draw overlays on video
+/// Now provides detection results for drawing bounding boxes on recorded videos
 class FaceDetector {
     
     // MARK: - Private Properties
+    
+    /// Current face detection results
+    private var currentFaceObservations: [VNFaceObservation] = []
     
     /// The Vision request for face detection
     /// Created lazily (only when first needed) for better performance
@@ -46,6 +48,56 @@ class FaceDetector {
         }
     }
     
+    /// Gets the current face detection results
+    /// - Returns: Array of face observations from the most recent detection
+    func getCurrentFaceObservations() -> [VNFaceObservation] {
+        return currentFaceObservations
+    }
+    
+    /// Draws face detection bounding boxes on an image
+    /// - Parameters:
+    ///   - image: The image to draw on
+    ///   - imageSize: The size of the image in pixels
+    /// - Returns: The image with bounding boxes drawn
+    func drawFaceBoundingBoxes(on image: CIImage, imageSize: CGSize) -> CIImage {
+        // Create a graphics context to draw on
+        UIGraphicsBeginImageContext(imageSize)
+        defer { UIGraphicsEndImageContext() }
+        
+        guard let context = UIGraphicsGetCurrentContext() else { return image }
+        
+        // Convert CIImage to CGImage for drawing
+        let ciContext = CIContext()
+        guard let cgImage = ciContext.createCGImage(image, from: image.extent) else { return image }
+        
+        // Draw the original image
+        context.draw(cgImage, in: CGRect(origin: .zero, size: imageSize))
+        
+        // Draw bounding boxes for each detected face
+        context.setStrokeColor(UIColor.red.cgColor)
+        context.setLineWidth(3.0)
+        
+        for face in currentFaceObservations {
+            // Convert normalized coordinates to pixel coordinates
+            // Vision uses normalized coordinates (0.0 to 1.0) with origin at bottom-left
+            // We need to flip Y coordinate since UIKit uses top-left origin
+            let boundingBox = face.boundingBox
+            let x = boundingBox.origin.x * imageSize.width
+            let y = (1 - boundingBox.origin.y - boundingBox.height) * imageSize.height
+            let width = boundingBox.width * imageSize.width
+            let height = boundingBox.height * imageSize.height
+            
+            let rect = CGRect(x: x, y: y, width: width, height: height)
+            context.stroke(rect)
+        }
+        
+        // Get the final image with bounding boxes
+        guard let finalImage = UIGraphicsGetImageFromCurrentImageContext(),
+              let finalCGImage = finalImage.cgImage else { return image }
+        
+        return CIImage(cgImage: finalCGImage)
+    }
+    
     // MARK: - Private Methods
     
     /// Handles the results from face detection
@@ -58,19 +110,19 @@ class FaceDetector {
             if let error = error {
                 print("Face detection failed: \(error)")
             }
+            currentFaceObservations = []
             return
         }
         
-        // Process each detected face
-        // SIMPLIFICATION SUGGESTION: This could be made more useful by:
-        // 1. Drawing bounding boxes on the video
-        // 2. Counting faces and showing in UI
-        // 3. Triggering actions when faces are detected
-        for face in faceObservations {
-            print("Found face with confidence: \(face.confidence)")
-            print("Bounding box: \(face.boundingBox)")
-            // Note: Bounding box coordinates are normalized (0.0 to 1.0)
-            // You'd need to convert these to actual pixel coordinates for drawing
+        // Store the current face observations
+        currentFaceObservations = faceObservations
+        
+        // Optional: Print detection info for debugging
+        if !faceObservations.isEmpty {
+            print("Found \(faceObservations.count) face(s)")
+            for face in faceObservations {
+                print("Face confidence: \(face.confidence), Bounding box: \(face.boundingBox)")
+            }
         }
     }
 }

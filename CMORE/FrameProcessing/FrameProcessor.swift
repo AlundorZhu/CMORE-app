@@ -11,11 +11,7 @@ import AVFoundation
 
 // MARK: - Frame Processor
 /// Handles processing of individual video frames from the camera or video files
-/// Currently focuses on face detection but could be extended for other analysis
-/// SIMPLIFICATION SUGGESTIONS:
-/// 1. This class could be made optional if face detection isn't always needed
-/// 2. Could add configuration options for different types of processing
-/// 3. The prepareFrame method is currently empty and could be removed
+/// Processes frames for face detection and can return frames with bounding boxes drawn
 class FrameProcessor {
     
     // MARK: - Private Properties
@@ -36,12 +32,24 @@ class FrameProcessor {
         faceDetector.detectFaces(in: preparedImage)
     }
     
+    /// Processes a frame and returns it with face detection bounding boxes drawn
+    /// - Parameters:
+    ///   - ciImage: The frame to process
+    ///   - imageSize: The size of the image in pixels
+    /// - Returns: The frame with bounding boxes drawn on detected faces
+    func processFrameWithBoundingBoxes(_ ciImage: CIImage, imageSize: CGSize) -> CIImage {
+        // First detect faces
+        faceDetector.detectFaces(in: ciImage)
+        
+        // Then draw bounding boxes on the frame
+        return faceDetector.drawFaceBoundingBoxes(on: ciImage, imageSize: imageSize)
+    }
+    
     // MARK: - Private Methods
     
     /// Prepares a frame for processing (placeholder for future enhancements)
     /// - Parameter ciImage: The original frame
     /// - Returns: The prepared frame (currently unchanged)
-    /// SIMPLIFICATION SUGGESTION: This method could be removed since it doesn't do anything
     private func prepareFrame(_ ciImage: CIImage) -> CIImage {
         // Add any frame preparation here if needed (e.g., resizing, filtering, etc.)
         return ciImage

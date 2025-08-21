@@ -35,8 +35,8 @@ class VideoStreamViewModel: NSObject, ObservableObject {
     /// Handles video data output from the camera
     private var videoOutput: AVCaptureVideoDataOutput?
     
-    /// Handles movie file output for recording
-    private var movieOutput: AVCaptureMovieFileOutput?
+    /// Custom video writer for recording processed frames with face detection
+    private var videoWriter: VideoWriter?
     
     /// Background queue for processing video frames (keeps UI responsive)
     private let videoOutputQueue = DispatchQueue(label: "videoOutputQueue", qos: .userInitiated)
@@ -133,13 +133,8 @@ class VideoStreamViewModel: NSObject, ObservableObject {
                 captureSession?.addOutput(videoOutput!)
             }
             
-            // Set up movie file output for recording
-            movieOutput = AVCaptureMovieFileOutput()
-            
-            // Add movie output to the session
-            if captureSession?.canAddOutput(movieOutput!) == true {
-                captureSession?.addOutput(movieOutput!)
-            }
+            // Initialize video writer
+            videoWriter = VideoWriter()
             
         } catch {
             print("Error setting up camera: \(error)")
@@ -169,54 +164,66 @@ class VideoStreamViewModel: NSObject, ObservableObject {
     
     /// Starts video recording to a file
     private func startRecording() {
-        guard let movieOutput = movieOutput else {
-            print("Movie output not available")
+        guard let videoWriter = videoWriter else {
+            print("Video writer not available")
             return
         }
         
         // Don't start recording if already recording
-        guard !movieOutput.isRecording else { return }
+        guard !isRecording else { return }
         
         // Create a unique filename for the recorded video
         let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
         let videoFileName = "CMORE_Recording_\(Date().timeIntervalSince1970).mov"
         let outputURL = documentsPath.appendingPathComponent(videoFileName)
         
-        // Remove any existing file at this location
-        if FileManager.default.fileExists(atPath: outputURL.path) {
-            try? FileManager.default.removeItem(at: outputURL)
-        }
-        
-        // Start recording to the file
-        movieOutput.startRecording(to: outputURL, recordingDelegate: self)
-        
-        // Update UI
-        Task { @MainActor in
-            self.isRecording = true
-            self.recordingStatusMessage = "Recording started..."
+        // Start recording with the video writer
+        if videoWriter.startRecording(to: outputURL) {
+            // Update UI
+            Task { @MainActor in
+                self.isRecording = true
+                self.recordingStatusMessage = "Recording started with face detection..."
+                self.currentVideoURL = outputURL
+            }
+        } else {
+            Task { @MainActor in
+                self.recordingStatusMessage = "Failed to start recording"
+            }
         }
     }
     
     /// Stops video recording
     private func stopRecording() {
-        guard let movieOutput = movieOutput else { return }
+        guard let videoWriter = videoWriter else { return }
         
-        if movieOutput.isRecording {
-            movieOutput.stopRecording()
-        }
+        guard isRecording else { return }
         
-        // Update UI
-        Task { @MainActor in
-            self.isRecording = false
-            self.recordingStatusMessage = "Recording stopped"
+        // Stop recording with async/await
+        Task {
+            let result = await videoWriter.stopRecording()
+            
+            await MainActor.run {
+                self.isRecording = false
+                
+                if let error = result.error {
+                    self.recordingStatusMessage = "Recording failed: \(error.localizedDescription)"
+                    print("Recording error: \(error)")
+                } else if result.success {
+                    // Successfully recorded - ask user to save or discard
+                    self.recordingStatusMessage = "Recording completed with face detection! Save or discard?"
+                    self.showSaveConfirmation = true
+                } else {
+                    self.recordingStatusMessage = "Recording failed: Unknown error"
+                }
+            }
         }
     }
 }
 
 // MARK: - AVCaptureVideoDataOutputSampleBufferDelegate
-/// This extension handles camera frame data for face detection processing only
+/// This extension handles camera frame data for face detection processing and video recording
 extension VideoStreamViewModel: AVCaptureVideoDataOutputSampleBufferDelegate {
-    /// Called for each new camera frame - processes for face detection only
+    /// Called for each new camera frame - processes for face detection and records if recording
     /// - Parameters:
     ///   - output: The capture output that produced the frame
     ///   - sampleBuffer: The frame data
@@ -230,43 +237,16 @@ extension VideoStreamViewModel: AVCaptureVideoDataOutputSampleBufferDelegate {
         
         // Process the frame for face detection (runs on background thread)
         frameProcessor.processFrame(ciImage)
+        
+        // If recording, add this frame to the video writer
+        if isRecording, let videoWriter = videoWriter {
+            videoWriter.addFrame(from: sampleBuffer)
+        }
     }
 }
 
-// MARK: - AVCaptureFileOutputRecordingDelegate
-/// This extension handles video recording events (start, finish, errors)
-extension VideoStreamViewModel: AVCaptureFileOutputRecordingDelegate {
-    /// Called when recording starts successfully
-    /// - Parameters:
-    ///   - output: The file output that started recording
-    ///   - fileURL: The URL where the video is being saved
-    ///   - connections: The connections involved in recording
-    func fileOutput(_ output: AVCaptureFileOutput, didStartRecordingTo fileURL: URL, from connections: [AVCaptureConnection]) {
-        Task { @MainActor in
-            self.recordingStatusMessage = "Recording to: \(fileURL.lastPathComponent)"
-        }
-    }
-    
-    /// Called when recording finishes (successfully or with error)
-    /// - Parameters:
-    ///   - output: The file output that finished recording
-    ///   - outputFileURL: The URL where the video was saved
-    ///   - connections: The connections involved in recording
-    ///   - error: Any error that occurred during recording
-    func fileOutput(_ output: AVCaptureFileOutput, didFinishRecordingTo outputFileURL: URL, from connections: [AVCaptureConnection], error: Error?) {
-        Task { @MainActor in
-            if let error = error {
-                self.recordingStatusMessage = "Recording failed: \(error.localizedDescription)"
-                print("Recording error: \(error)")
-            } else {
-                // Successfully recorded - ask user to save or discard (one-time choice)
-                self.currentVideoURL = outputFileURL
-                self.recordingStatusMessage = "Recording completed! Save or discard?"
-                self.showSaveConfirmation = true
-            }
-        }
-    }
-    
+// MARK: - Video Saving Methods
+extension VideoStreamViewModel {
     /// Saves the recorded video to the Photos library
     /// - Parameter videoURL: The URL of the recorded video file
     private func saveVideoToPhotosLibrary(_ videoURL: URL) {
@@ -303,4 +283,6 @@ extension VideoStreamViewModel: AVCaptureFileOutputRecordingDelegate {
         }
     }
 }
+
+
 
