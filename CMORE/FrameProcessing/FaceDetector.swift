@@ -80,10 +80,9 @@ class FaceDetector {
         for face in currentFaceObservations {
             // Convert normalized coordinates to pixel coordinates
             // Vision uses normalized coordinates (0.0 to 1.0) with origin at bottom-left
-            // We need to flip Y coordinate since UIKit uses top-left origin
             let boundingBox = face.boundingBox
             let x = boundingBox.origin.x * imageSize.width
-            let y = (1 - boundingBox.origin.y - boundingBox.height) * imageSize.height
+            let y = boundingBox.origin.y * imageSize.height
             let width = boundingBox.width * imageSize.width
             let height = boundingBox.height * imageSize.height
             
