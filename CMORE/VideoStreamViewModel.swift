@@ -102,6 +102,12 @@ class VideoStreamViewModel: NSObject, ObservableObject {
     
     // MARK: - Private Methods
     
+    // Calculate New ISO by a factor of change in shutter spee
+    private func calculateISO(old shutterOld: CMTime, new shutterNew: CMTime, current ISO: Float) -> Float {
+        let factor = shutterOld.seconds / shutterNew.seconds
+        return ISO * Float(factor)
+    }
+    
     /// Sets up the camera capture session
     /// Camera starts automatically, no separate streaming control needed
     private func setupCamera() {
@@ -118,14 +124,33 @@ class VideoStreamViewModel: NSObject, ObservableObject {
             // Set frame rate
             camera.activeVideoMinFrameDuration = CameraSettings.frameRate
             camera.activeVideoMaxFrameDuration = CameraSettings.frameRate
-            
+
+            let newISO = calculateISO(
+                old: camera.exposureDuration,
+                new: CameraSettings.ShutterSpeed,
+                current: camera.iso
+            )
+
+            print("Current ISO: \(camera.iso)")
+            print("Target ISO: \(newISO)")
+
+            print("Current Shutter Speed: \(camera.exposureDuration)")
+
+            let clampedISO = min(max(newISO, camera.activeFormat.minISO), camera.activeFormat.maxISO)
+            print("Clamped ISO: \(clampedISO)")
+
+
             // Set shutter speed
             camera.setExposureModeCustom(
                 duration: CameraSettings.ShutterSpeed,
-                iso: AVCaptureDevice.currentISO,
-                completionHandler: nil
+                iso: clampedISO,
+                completionHandler: { (timestamp) in
+                    // This runs after the camera has actually applied the new settings
+                    print("Shutter Speed (after): \(camera.exposureDuration)")
+                    print("ISO (after): \(camera.iso)")
+                }
             )
-            
+
             camera.unlockForConfiguration()
             
             // Create and configure the capture session
