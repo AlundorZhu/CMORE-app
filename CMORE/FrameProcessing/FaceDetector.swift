@@ -79,7 +79,7 @@ class FaceDetector {
         
         for face in currentFaceObservations {
             // Convert normalized coordinates to pixel coordinates
-            // Vision uses normalized coordinates (0.0 to 1.0) with origin at bottom-left
+            // Vision uses normalized coordinates (0.0 to 1.0)
             let boundingBox = face.boundingBox
             let x = boundingBox.origin.x * imageSize.width
             let y = boundingBox.origin.y * imageSize.height
