@@ -112,9 +112,24 @@ class VideoStreamViewModel: NSObject, ObservableObject {
         }
         
         do {
+            // Configure camera settings before creating capture session
+            try camera.lockForConfiguration()
+            
+            // Set frame rate
+            camera.activeVideoMinFrameDuration = CameraSettings.frameRate
+            camera.activeVideoMaxFrameDuration = CameraSettings.frameRate
+            
+            // Set shutter speed
+            camera.setExposureModeCustom(
+                duration: CameraSettings.ShutterSpeed,
+                iso: AVCaptureDevice.currentISO,
+                completionHandler: nil
+            )
+            
+            camera.unlockForConfiguration()
+            
             // Create and configure the capture session
             captureSession = AVCaptureSession()
-            captureSession?.sessionPreset = .medium // Medium quality for better performance
             
             // Create input from the camera
             let cameraInput = try AVCaptureDeviceInput(device: camera)
@@ -124,7 +139,7 @@ class VideoStreamViewModel: NSObject, ObservableObject {
                 captureSession?.addInput(cameraInput)
             }
             
-            // Set up video output to receive frames for face detection only
+            // Set up video output to receive frames
             videoOutput = AVCaptureVideoDataOutput()
             videoOutput?.setSampleBufferDelegate(self, queue: videoOutputQueue)
             
@@ -133,7 +148,7 @@ class VideoStreamViewModel: NSObject, ObservableObject {
                 captureSession?.addOutput(videoOutput!)
             }
             
-            // Initialize video writer
+            // Initialize video writer with camera settings
             videoWriter = VideoWriter()
             
         } catch {
@@ -236,11 +251,11 @@ extension VideoStreamViewModel: AVCaptureVideoDataOutputSampleBufferDelegate {
         let ciImage = CIImage(cvPixelBuffer: pixelBuffer)
         
         // Process the frame for face detection (runs on background thread)
-        frameProcessor.processFrame(ciImage)
+        let processedFrame = frameProcessor.processFrameWithBoundingBoxes(ciImage, imageSize: CameraSettings.resolution)
         
         // If recording, add this frame to the video writer
         if isRecording, let videoWriter = videoWriter {
-            videoWriter.addFrame(from: sampleBuffer)
+            videoWriter.addFrame(processedFrame)
         }
     }
 }

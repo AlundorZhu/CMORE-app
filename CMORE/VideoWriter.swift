@@ -23,15 +23,6 @@ class VideoWriter {
     private var isRecording = false
     private var frameCount = 0
     
-    // Video settings
-    private let videoSize: CGSize
-    private let fps: Int32 = 30
-    
-    // MARK: - Initialization
-    
-    init(videoSize: CGSize = CGSize(width: 1280, height: 720)) {
-        self.videoSize = videoSize
-    }
     
     // MARK: - Public Methods
     
@@ -50,12 +41,12 @@ class VideoWriter {
             
             // Configure video input
             let videoSettings: [String: Any] = [
-                AVVideoCodecKey: AVVideoCodecType.h264,
-                AVVideoWidthKey: videoSize.width,
-                AVVideoHeightKey: videoSize.height,
+                AVVideoCodecKey: CameraSettings.videoCodec,
+                AVVideoWidthKey: CameraSettings.resolution.width,
+                AVVideoHeightKey: CameraSettings.resolution.height,
                 AVVideoCompressionPropertiesKey: [
-                    AVVideoAverageBitRateKey: 2000000, // 2 Mbps
-                    AVVideoProfileLevelKey: AVVideoProfileLevelH264BaselineAutoLevel
+                    AVVideoAverageBitRateKey: CameraSettings.averageBitRate,
+                    AVVideoProfileLevelKey: CameraSettings.profileLevel
                 ]
             ]
             
@@ -65,8 +56,8 @@ class VideoWriter {
             // Create pixel buffer adaptor
             let pixelBufferAttributes: [String: Any] = [
                 kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32ARGB,
-                kCVPixelBufferWidthKey as String: videoSize.width,
-                kCVPixelBufferHeightKey as String: videoSize.height
+                kCVPixelBufferWidthKey as String: CameraSettings.resolution.width,
+                kCVPixelBufferHeightKey as String: CameraSettings.resolution.height
             ]
             
             pixelBufferAdaptor = AVAssetWriterInputPixelBufferAdaptor(
@@ -100,41 +91,33 @@ class VideoWriter {
         }
     }
     
-    /// Adds a processed frame with bounding boxes to the video
-    /// - Parameter sampleBuffer: The camera frame sample buffer
-    func addFrame(from sampleBuffer: CMSampleBuffer) {
+    /// Adds a frame to the video
+    /// - Parameter frame: The processed frame as a CIImage
+    /// - Parameter presentationTime: The presentation time for the frame
+    func addFrame(_ frame: CIImage) {
         guard isRecording,
               let videoInput = videoInput,
               let pixelBufferAdaptor = pixelBufferAdaptor,
-              videoInput.isReadyForMoreMediaData else {
+              videoInput.isReadyForMoreMediaData,
+              let pixelBufferPool = pixelBufferAdaptor.pixelBufferPool else {
             return
         }
-        
-        // Get pixel buffer from sample buffer
-        guard let inputPixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else {
+
+        // Create a pixel buffer from the pool
+        guard let pixelBuffer = pixelBufferPool.createPixelBuffer() else {
+            print("Failed to create pixel buffer")
             return
         }
-        
-        // Convert to CIImage for processing
-        let ciImage = CIImage(cvPixelBuffer: inputPixelBuffer)
-        
-        // Process frame with face detection bounding boxes
-        let processedImage = frameProcessor.processFrameWithBoundingBoxes(ciImage, imageSize: videoSize)
-        
-        // Create output pixel buffer
-        guard let outputPixelBuffer = pixelBufferAdaptor.pixelBufferPool?.createPixelBuffer() else {
-            return
-        }
-        
-        // Render processed image to pixel buffer
+
+        // Render the CIImage into the pixel buffer
         let ciContext = CIContext()
-        ciContext.render(processedImage, to: outputPixelBuffer)
-        
-        // Calculate presentation time
-        let presentationTime = CMTime(value: CMTimeValue(frameCount), timescale: fps)
-        
-        // Add frame to video
-        pixelBufferAdaptor.append(outputPixelBuffer, withPresentationTime: presentationTime)
+        ciContext.render(frame, to: pixelBuffer)
+
+        // Create a presentation time for the frame
+        let presentationTime = CMTime(value: CMTimeValue(frameCount), timescale: CameraSettings.frameRate.timescale)
+
+        // Append the pixel buffer to the video
+        pixelBufferAdaptor.append(pixelBuffer, withPresentationTime: presentationTime)
         frameCount += 1
     }
     
