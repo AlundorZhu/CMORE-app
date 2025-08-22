@@ -148,23 +148,19 @@ class VideoWriter {
         isRecording = false
         
         videoInput?.markAsFinished()
-        
-        // Use withCheckedContinuation to convert callback-based API to async/await
-        let result = await withCheckedContinuation { continuation in
-            assetWriter?.finishWriting { [weak self] in
-                let success = self?.assetWriter?.status == .completed
-                let error = self?.assetWriter?.error
-                
-                // Clean up
-                self?.assetWriter = nil
-                self?.videoInput = nil
-                self?.pixelBufferAdaptor = nil
-                
-                continuation.resume(returning: (success: success, error: error))
-            }
+
+        // Ensure cleanup
+        defer {
+            assetWriter = nil
+            videoInput = nil
+            pixelBufferAdaptor = nil
         }
         
-        return result
+        await assetWriter?.finishWriting()
+        let success = assetWriter?.status == .completed
+        let error = assetWriter?.error
+
+        return (success: success, error: error)
     }
 }
 
