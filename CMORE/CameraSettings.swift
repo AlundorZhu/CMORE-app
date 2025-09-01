@@ -11,6 +11,7 @@ import CoreGraphics
 struct CameraSettings {
     static var resolution: CGSize = CGSize(width: 1920, height: 1080)
     static var frameRate: CMTime = CMTime(value: 1, timescale: 30) // 30 fps
+    static var fps : Double = 30
     static var ShutterSpeed: CMTime = CMTime(value: 1, timescale: 500) // 1/500 second
     
     // Video encoding settings

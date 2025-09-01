@@ -24,9 +24,9 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
-		8A0543902E55657C00BE2B01 /* CMORE.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = CMORE.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		8A05439E2E55657D00BE2B01 /* CMORETests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = CMORETests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
-		8A0543A82E55657D00BE2B01 /* CMOREUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = CMOREUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		8A19DD772E610B010038DD1E /* CMORE.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = CMORE.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		8A19DD782E610B010038DD1E /* CMORETests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = CMORETests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		8A19DD792E610B010038DD1E /* CMOREUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = CMOREUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -91,18 +91,10 @@
 				8A0543922E55657C00BE2B01 /* CMORE */,
 				8A0543A12E55657D00BE2B01 /* CMORETests */,
 				8A0543AB2E55657D00BE2B01 /* CMOREUITests */,
-				8A0543912E55657C00BE2B01 /* Products */,
+				8A19DD772E610B010038DD1E /* CMORE.app */,
+				8A19DD782E610B010038DD1E /* CMORETests.xctest */,
+				8A19DD792E610B010038DD1E /* CMOREUITests.xctest */,
 			);
-			sourceTree = "<group>";
-		};
-		8A0543912E55657C00BE2B01 /* Products */ = {
-			isa = PBXGroup;
-			children = (
-				8A0543902E55657C00BE2B01 /* CMORE.app */,
-				8A05439E2E55657D00BE2B01 /* CMORETests.xctest */,
-				8A0543A82E55657D00BE2B01 /* CMOREUITests.xctest */,
-			);
-			name = Products;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -127,7 +119,7 @@
 			packageProductDependencies = (
 			);
 			productName = CMORE;
-			productReference = 8A0543902E55657C00BE2B01 /* CMORE.app */;
+			productReference = 8A19DD772E610B010038DD1E /* CMORE.app */;
 			productType = "com.apple.product-type.application";
 		};
 		8A05439D2E55657D00BE2B01 /* CMORETests */ = {
@@ -150,7 +142,7 @@
 			packageProductDependencies = (
 			);
 			productName = CMORETests;
-			productReference = 8A05439E2E55657D00BE2B01 /* CMORETests.xctest */;
+			productReference = 8A19DD782E610B010038DD1E /* CMORETests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
 		};
 		8A0543A72E55657D00BE2B01 /* CMOREUITests */ = {
@@ -173,7 +165,7 @@
 			packageProductDependencies = (
 			);
 			productName = CMOREUITests;
-			productReference = 8A0543A82E55657D00BE2B01 /* CMOREUITests.xctest */;
+			productReference = 8A19DD792E610B010038DD1E /* CMOREUITests.xctest */;
 			productType = "com.apple.product-type.bundle.ui-testing";
 		};
 /* End PBXNativeTarget section */
@@ -209,7 +201,7 @@
 			mainGroup = 8A0543872E55657C00BE2B01;
 			minimizedProjectReferenceProxies = 1;
 			preferredProjectObjectVersion = 77;
-			productRefGroup = 8A0543912E55657C00BE2B01 /* Products */;
+			productRefGroup = 8A0543872E55657C00BE2B01;
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
