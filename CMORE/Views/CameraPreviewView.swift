@@ -15,7 +15,7 @@ struct CameraPreviewView: UIViewRepresentable {
     func makeUIView(context: Context) -> CameraPreviewUIView {
         let view = CameraPreviewUIView()
         view.previewLayer.session = session
-        view.previewLayer.videoGravity = .resizeAspectFill
+        view.previewLayer.videoGravity = .resizeAspect
         return view
     }
     
@@ -31,7 +31,7 @@ struct CameraPreviewView: UIViewRepresentable {
 class CameraPreviewUIView: UIView {
     lazy var previewLayer: AVCaptureVideoPreviewLayer = {
         let layer = AVCaptureVideoPreviewLayer()
-        layer.videoGravity = .resizeAspectFill
+        layer.videoGravity = .resizeAspect
         return layer
     }()
     

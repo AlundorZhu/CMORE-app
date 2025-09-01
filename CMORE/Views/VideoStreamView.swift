@@ -23,7 +23,7 @@ struct VideoStreamView: View {
                 // Show the live camera preview using preview layer
                 if let session = viewModel.captureSession {
                     CameraPreviewView(session: session)
-                        .clipped() // Clip the preview to the frame bounds
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
                     // Placeholder when camera is not available
                     Color.black
@@ -65,7 +65,8 @@ struct VideoStreamView: View {
                     }
                 }
             }
-            .frame(height: 400) // Fixed height for the video display area
+            // .frame(height: 400) // Fixed height for the video display area
+            .aspectRatio(CameraSettings.resolution.height / CameraSettings.resolution.width, contentMode: .fit)
             .cornerRadius(12) // Rounded corners for the camera view
             
             // MARK: - Single Recording Button
