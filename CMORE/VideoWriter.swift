@@ -7,120 +7,86 @@
 
 import Foundation
 import AVFoundation
-import CoreImage
-import CoreGraphics
 import UIKit
 
-// MARK: - Video Writer
-/// Custom video writer that can record processed frames with face detection bounding boxes
+// MARK: - Simple Video Writer
+/// Dead simple video writer - just feed it UIImages
 class VideoWriter {
     
     // MARK: - Properties
-    
     private var assetWriter: AVAssetWriter?
     private var videoInput: AVAssetWriterInput?
     private var pixelBufferAdaptor: AVAssetWriterInputPixelBufferAdaptor?
-    private let frameProcessor = FrameProcessor()
     private var isRecording = false
-    private var frameCount = 0
-    
+    private var frameCount: Int64 = 0
     
     // MARK: - Public Methods
     
-    /// Starts recording to the specified URL
-    /// - Parameter outputURL: The URL where the video should be saved
-    /// - Returns: True if recording started successfully, false otherwise
+    /// Start recording - simple setup
     func startRecording(to outputURL: URL) -> Bool {
-        // Remove existing file if it exists
-        if FileManager.default.fileExists(atPath: outputURL.path) {
-            try? FileManager.default.removeItem(at: outputURL)
-        }
+        // Clean slate
+        try? FileManager.default.removeItem(at: outputURL)
         
         do {
-            // Create asset writer
+            // Create writer
             assetWriter = try AVAssetWriter(outputURL: outputURL, fileType: .mov)
             
-            // Configure video input
-            let videoSettings: [String: Any] = [
-                AVVideoCodecKey: CameraSettings.videoCodec,
-                AVVideoWidthKey: CameraSettings.resolution.width,
-                AVVideoHeightKey: CameraSettings.resolution.height,
-                AVVideoCompressionPropertiesKey: [
-                    AVVideoAverageBitRateKey: CameraSettings.averageBitRate,
-                    AVVideoProfileLevelKey: CameraSettings.profileLevel
+            // Use high-level preset for video settings
+            let videoSettings = AVOutputSettingsAssistant(preset: .preset1920x1080)?
+                .videoSettings ?? [
+                    AVVideoCodecKey: AVVideoCodecType.h264,
+                    AVVideoWidthKey: CameraSettings.resolution.width,
+                    AVVideoHeightKey: CameraSettings.resolution.height
                 ]
-            ]
             
+            // Create video input
             videoInput = AVAssetWriterInput(mediaType: .video, outputSettings: videoSettings)
-            videoInput?.expectsMediaDataInRealTime = true
+            videoInput?.expectsMediaDataInRealTime = false
             
-            // Create pixel buffer adaptor
-            let pixelBufferAttributes: [String: Any] = [
-                kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32ARGB,
-                kCVPixelBufferWidthKey as String: CameraSettings.resolution.width,
-                kCVPixelBufferHeightKey as String: CameraSettings.resolution.height
-            ]
-            
+            // Simple pixel buffer adaptor - let system handle optimization
             pixelBufferAdaptor = AVAssetWriterInputPixelBufferAdaptor(
                 assetWriterInput: videoInput!,
-                sourcePixelBufferAttributes: pixelBufferAttributes
+                sourcePixelBufferAttributes: nil
             )
             
-            // Add input to asset writer
-            if assetWriter!.canAdd(videoInput!) {
-                assetWriter!.add(videoInput!)
-            } else {
-                print("Cannot add video input to asset writer")
-                return false
-            }
+            // Add to writer
+            assetWriter!.add(videoInput!)
             
-            // Start writing
-            guard assetWriter!.startWriting() else {
-                print("Failed to start writing: \(assetWriter?.error?.localizedDescription ?? "Unknown error")")
-                return false
-            }
-            
+            // Start
+            assetWriter!.startWriting()
             assetWriter!.startSession(atSourceTime: .zero)
+            
             isRecording = true
             frameCount = 0
             
             return true
             
         } catch {
-            print("Error setting up video writer: \(error)")
+            print("Failed to start recording: \(error)")
             return false
         }
     }
     
-    /// Adds a frame to the video
-    /// - Parameter frame: The processed frame as a UIImage
-    /// - Parameter presentationTime: The presentation time for the frame
-    func appendFrame(_ frame: UIImage) {
+    /// Add a frame - as simple as it gets
+    func appendFrame(_ image: UIImage) async {
         guard isRecording,
               let videoInput = videoInput,
               let pixelBufferAdaptor = pixelBufferAdaptor,
-              videoInput.isReadyForMoreMediaData,
-              let pixelBufferPool = pixelBufferAdaptor.pixelBufferPool,
-              let cgImage = frame.cgImage else {
+              videoInput.isReadyForMoreMediaData else {
             return
         }
-
-        // Create a pixel buffer from the pool
-        guard let pixelBuffer = pixelBufferPool.createPixelBuffer() else {
-            print("Failed to create pixel buffer")
+        
+        // Convert UIImage to pixel buffer (the only complex part we can't avoid)
+        guard let pixelBuffer = await image.toPixelBuffer() else {
+            print("Failed to convert image to pixel buffer")
             return
         }
-
-        // Convert UIImage to CIImage and render into the pixel buffer
-        let ciImage = CIImage(cgImage: cgImage)
-        let ciContext = CIContext()
-        ciContext.render(ciImage, to: pixelBuffer)
-
-        // Create a presentation time for the frame
-        let presentationTime = CMTime(value: CMTimeValue(frameCount), timescale: CameraSettings.frameRate.timescale)
-
-        // Append the pixel buffer to the video
-        pixelBufferAdaptor.append(pixelBuffer, withPresentationTime: presentationTime)
+        
+        // Calculate time for this frame
+        let frameTime = CMTime(value: frameCount, timescale: CameraSettings.frameRate.timescale)
+        
+        // Append it
+        pixelBufferAdaptor.append(pixelBuffer, withPresentationTime: frameTime)
         frameCount += 1
     }
     
@@ -132,17 +98,10 @@ class VideoWriter {
         }
         
         isRecording = false
-        
         videoInput?.markAsFinished()
-
-        // Ensure cleanup
-        defer {
-            assetWriter = nil
-            videoInput = nil
-            pixelBufferAdaptor = nil
-        }
         
         await assetWriter?.finishWriting()
+        
         let success = assetWriter?.status == .completed
         let error = assetWriter?.error
 
@@ -150,17 +109,51 @@ class VideoWriter {
     }
 }
 
-// MARK: - CVPixelBufferPool Extension
-private extension CVPixelBufferPool {
-    func createPixelBuffer() -> CVPixelBuffer? {
-        var pixelBuffer: CVPixelBuffer?
-        let status = CVPixelBufferPoolCreatePixelBuffer(nil, self, &pixelBuffer)
+// MARK: - UIImage Extension
+extension UIImage {
+    /// Convert UIImage to CVPixelBuffer - simplified version
+    func toPixelBuffer() async -> CVPixelBuffer? {
+        guard let cgImage = self.cgImage else { return nil }
         
-        if status == kCVReturnSuccess {
-            return pixelBuffer
-        } else {
-            print("Failed to create pixel buffer: \(status)")
+        let width = cgImage.width
+        let height = cgImage.height
+        
+        // Create pixel buffer with minimal configuration
+        var pixelBuffer: CVPixelBuffer?
+        let status = CVPixelBufferCreate(
+            nil,
+            width,
+            height,
+            kCVPixelFormatType_32ARGB,
+            nil,
+            &pixelBuffer
+        )
+        
+        guard status == kCVReturnSuccess, let buffer = pixelBuffer else {
             return nil
         }
+        
+        // Draw image into pixel buffer
+        CVPixelBufferLockBaseAddress(buffer, [])
+        defer { CVPixelBufferUnlockBaseAddress(buffer, []) }
+        
+        guard let context = CGContext(
+            data: CVPixelBufferGetBaseAddress(buffer),
+            width: width,
+            height: height,
+            bitsPerComponent: 8,
+            bytesPerRow: CVPixelBufferGetBytesPerRow(buffer),
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.noneSkipFirst.rawValue
+        ) else {
+            return nil
+        }
+        
+        // Flip coordinate system for video
+        context.translateBy(x: 0, y: CGFloat(height))
+        context.scaleBy(x: 1, y: -1)
+        context.draw(cgImage, in: CGRect(x: 0, y: 0, width: width, height: height))
+        
+        return buffer
     }
 }

@@ -283,7 +283,7 @@ extension VideoStreamViewModel: AVCaptureVideoDataOutputSampleBufferDelegate {
             if isRecording,
                let videoWriter = videoWriter,
                let processedFrame {
-                videoWriter.appendFrame(processedFrame)
+                await videoWriter.appendFrame(processedFrame)
             }
         }
     }
