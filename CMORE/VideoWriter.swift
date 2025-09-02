@@ -9,6 +9,7 @@ import Foundation
 import AVFoundation
 import CoreImage
 import CoreGraphics
+import UIKit
 
 // MARK: - Video Writer
 /// Custom video writer that can record processed frames with face detection bounding boxes
@@ -92,14 +93,15 @@ class VideoWriter {
     }
     
     /// Adds a frame to the video
-    /// - Parameter frame: The processed frame as a CIImage
+    /// - Parameter frame: The processed frame as a UIImage
     /// - Parameter presentationTime: The presentation time for the frame
-    func addFrame(_ frame: CIImage) {
+    func appendFrame(_ frame: UIImage) {
         guard isRecording,
               let videoInput = videoInput,
               let pixelBufferAdaptor = pixelBufferAdaptor,
               videoInput.isReadyForMoreMediaData,
-              let pixelBufferPool = pixelBufferAdaptor.pixelBufferPool else {
+              let pixelBufferPool = pixelBufferAdaptor.pixelBufferPool,
+              let cgImage = frame.cgImage else {
             return
         }
 
@@ -109,9 +111,10 @@ class VideoWriter {
             return
         }
 
-        // Render the CIImage into the pixel buffer
+        // Convert UIImage to CIImage and render into the pixel buffer
+        let ciImage = CIImage(cgImage: cgImage)
         let ciContext = CIContext()
-        ciContext.render(frame, to: pixelBuffer)
+        ciContext.render(ciImage, to: pixelBuffer)
 
         // Create a presentation time for the frame
         let presentationTime = CMTime(value: CMTimeValue(frameCount), timescale: CameraSettings.frameRate.timescale)
