@@ -276,12 +276,14 @@ extension VideoStreamViewModel: AVCaptureVideoDataOutputSampleBufferDelegate {
         let ciImage = CIImage(cvPixelBuffer: pixelBuffer)
         
         // Process the frame for face detection (runs on background thread)
-        Task {
-            let processedFrame = await frameProcessor.processFrame(ciImage)
+        Task.detached { [weak self] in
+            guard let self = self else { return }
+            
+            let processedFrame = await self.frameProcessor.processFrame(ciImage)
             
             // If recording, add this frame to the video writer
             if isRecording,
-               let videoWriter = videoWriter,
+               let videoWriter = self.videoWriter,
                let processedFrame {
                 await videoWriter.appendFrame(processedFrame)
             }
