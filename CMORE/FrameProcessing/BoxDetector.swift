@@ -100,7 +100,7 @@ struct BoxDetector {
         
         // Restore the coordinates
         let x = (predictionCoord[0] - Float(paddingX)) / Float(scale)
-        let y = (predictionCoord[1] - Float(paddingY)) / Float(scale)
+        let y = ((Float(modelInputSize.height) - predictionCoord[1]) - Float(paddingY)) / Float(scale) // invert y for vision
         
         return [x, y]
     }
