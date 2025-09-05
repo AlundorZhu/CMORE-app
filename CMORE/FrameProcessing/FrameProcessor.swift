@@ -113,30 +113,28 @@ class FrameProcessor {
         
         for keypoint in keypoints {
             // Each keypoint has format [x, y, confidence]
-            guard keypoint.count >= 3 else { continue }
+//            guard keypoint.count >= 3 else { continue }
             
             let x = CGFloat(keypoint[0])
             let y = CGFloat(keypoint[1])
-            let confidence = keypoint[2]
+//            let confidence = keypoint[2]
+//            
+//            print("Keypoint confidence: \(confidence)")
             
             // Only draw confident keypoints
-            if confidence > 0.5 {
-                // Convert normalized coordinates to pixel coordinates if needed
-                // Assuming keypoints are already in pixel coordinates based on the model output
-                let pixelX = x
-                let pixelY = y
-                
-                // Draw keypoint as a filled circle with white border
-                let keypointRect = CGRect(
-                    x: pixelX - keypointRadius,
-                    y: pixelY - keypointRadius,
-                    width: keypointRadius * 2,
-                    height: keypointRadius * 2
-                )
-                
-                context.fillEllipse(in: keypointRect)
-                context.strokeEllipse(in: keypointRect)
-            }
+//            if confidence > 0.5 {
+            
+            // Draw keypoint as a filled circle with white border
+            let keypointRect = CGRect(
+                x: x - keypointRadius,
+                y: y - keypointRadius,
+                width: keypointRadius * 2,
+                height: keypointRadius * 2
+            )
+            
+            context.fillEllipse(in: keypointRect)
+            context.strokeEllipse(in: keypointRect)
+//            }
         }
     }
     

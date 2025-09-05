@@ -28,7 +28,7 @@ struct BoxDetector {
         
     
     /// Processes the raw model output to extract keypoints
-    static func processKeypointOutput(_ shapedArray: MLShapedArray<Float>, confThresh objectConfThreshold: Float = 0.25, IOUThreshold: Float = 0.5) -> BoxDetection? {
+    static func processKeypointOutput(_ shapedArray: MLShapedArray<Float>, confThresh objectConfThreshold: Float = 0.2, IOUThreshold: Float = 0.5) -> BoxDetection? {
         // Following YOLO pose format:
         // Output shape: (1 × 35 × 5376) -> transpose to (1 × 5376 × 35)
         // Format: [x_center, y_center, width, height, class_conf, kpt1_x, kpt1_y, kpt1_conf, ...]
@@ -72,12 +72,37 @@ struct BoxDetector {
         let filteredDetections = applyNMS(detections: allDetections, iouThreshold: IOUThreshold)
         
         // Return keypoints from the best detection
-        if let bestDetection = filteredDetections.first {
+        if var bestDetection = filteredDetections.first {
+            
+            print("Object confidence: \(bestDetection.objectConf)")
+            
+            // Normalize the results before returning it
+            for idx in bestDetection.keypoints.indices {
+                bestDetection.keypoints[idx] = restoreCoordinatesFromScaleToFit(predictionCoord: bestDetection.keypoints[idx])
+            }
             return bestDetection
         }
         
         print("No box detected!")
         return nil
+    }
+    
+    static func restoreCoordinatesFromScaleToFit(predictionCoord: [Float], modelInputSize : CGSize = CGSize(width: 512, height: 512), OriginalImageSize: CGSize = CGSize(width: 1920, height: 1080)) -> [Float] {
+        
+        // Vision scale longest side to input size
+        let scale = min(modelInputSize.width / OriginalImageSize.width, modelInputSize.height/OriginalImageSize.height)
+        
+        // Calculate the padding
+        let scaledWidth = OriginalImageSize.width * scale
+        let scaledHeight = OriginalImageSize.height * scale
+        let paddingX = (modelInputSize.width - scaledWidth) / 2.0
+        let paddingY = (modelInputSize.height - scaledHeight) / 2.0
+        
+        // Restore the coordinates
+        let x = (predictionCoord[0] - Float(paddingX)) / Float(scale)
+        let y = (predictionCoord[1] - Float(paddingY)) / Float(scale)
+        
+        return [x, y]
     }
     
 // MARK: - Private
