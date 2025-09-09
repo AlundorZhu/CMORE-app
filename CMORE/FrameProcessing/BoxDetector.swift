@@ -195,4 +195,11 @@ struct BoxDetection {
     var height: Float = 0
     var objectConf: Float = 0
     var keypoints: [[Float]] = []
+    
+    private let keypointNames: [String] = ["Front top left", "Front bottom left", "Front top middle", "Front bottom middle", "Front top right", "Front bottom right", "Back divider top", "Front divider top", "Back top left", "Back top right"]
+    
+    subscript(name: String) -> [Float] {
+        let idx = keypointNames.firstIndex(of: name)!
+        return keypoints[idx]
+    }
 }
