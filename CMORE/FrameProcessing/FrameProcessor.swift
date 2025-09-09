@@ -16,11 +16,27 @@ import UIKit
 /// Processes frames for face detection and can return frames with bounding boxes drawn
 class FrameProcessor {
     
-    // MARK: - Private Properties
+    enum State {
+        case free
+        case detecting
+    }
+    
+    // MARK: - Public Properties
+    
+    public var countingBlocks = false
+    
+    // MARK: - Private ML Requests
     
     private let facesRequest = DetectFaceRectanglesRequest()
     
+    private let handsRequest = DetectHumanHandPoseRequest()
+    
     private let boxRequest: CoreMLRequest
+    
+    // MARK: - Private Properties
+    private var currentBox: BoxDetection?
+    
+    private var currentState:State = .free
     
     // MARK: - Public Methods
     
@@ -37,18 +53,68 @@ class FrameProcessor {
     /// - Parameter ciImage: The frame to process as a Core Image
     func processFrame(_ ciImage: CIImage) async -> UIImage?{
         
-        async let faces = try? facesRequest.perform(on: ciImage)
-        async let box = try? boxRequest.perform(on: ciImage)
+        if !countingBlocks {
+            async let faces = try? facesRequest.perform(on: ciImage)
+            async let box = try? boxRequest.perform(on: ciImage)
+            
+            var boxDetected: BoxDetection? = nil
+            
+            if let boxRequestResult = await box as? [CoreMLFeatureValueObservation],
+                let outputArray = boxRequestResult.first?.featureValue.shapedArrayValue(of: Float.self) {
+                    boxDetected = BoxDetector.processKeypointOutput(outputArray)
+                    currentBox = boxDetected
+                }
         
-        var boxDetected: BoxDetection? = nil
+            
+            return visualize(boxes: await faces, keypoints: boxDetected?.keypoints, on: ciImage)
+        }
         
-        if let boxRequestResult = await box as? [CoreMLFeatureValueObservation],
-            let outputArray = boxRequestResult.first?.featureValue.shapedArrayValue(of: Float.self) {
-                boxDetected = BoxDetector.processKeypointOutput(outputArray)
-            }
-    
+        async let hands = try? handsRequest.perform(on: ciImage)
+        guard let hands = await hands,
+              hands.count > 0 else {
+            return nil
+        }
         
-        return visualize(boxes: await faces, keypoints: boxDetected?.keypoints, on: ciImage)
+        guard let currentBox = currentBox else {
+            return nil
+        }
+        
+        currentState = transition(from: currentState, hand: hands.first!, box: currentBox)
+        
+        print("\(currentState)")
+        
+//        switch currentState {
+//        case .free:
+//            guard let hands = await hands,
+//                  hands.count > 0 else {
+//                return nil
+//            }
+//            
+//            guard let currentBox = currentBox else {
+//                return nil
+//            }
+//            
+//            currentState = transition(from: currentState, hand: hands.first!, box: currentBox)
+//            
+//            print("\(currentState)")
+//            
+//        case .detecting:
+//            guard let hands = await hands,
+//                  hands.count > 0 else {
+//                return nil
+//            }
+//            
+//            guard let currentBox = currentBox else {
+//                return nil
+//            }
+//            
+//            currentState = transition(from: currentState, hand: hands.first!, box: currentBox)
+//            
+//            print("\(currentState)")
+//        }
+        
+        // TODO remove it
+        return nil
     }
     
     func visualize(boxes: [BoundingBoxProviding]?, keypoints: [[Float]]?, on ciImage: CIImage) -> UIImage? {
@@ -84,6 +150,37 @@ class FrameProcessor {
     
     // MARK: - Private Methods
     
+    private func transition(from oldState: State, hand: HumanHandPoseObservation, box: BoxDetection) -> State {
+        let allJoints = hand.allJoints()
+        let jointNames: [HumanHandPoseObservation.JointName] = [.thumbTip, .indexTip, .middleTip, .ringTip, .littleTip]
+        var fingerTips: [Joint] = []
+        
+        for jointName in jointNames {
+            
+            /// was going to just use the fingerTips if the joint(for:) func isn't broken
+            if let joint = allJoints[jointName] {
+                fingerTips.append(joint)
+            }
+        }
+        
+        if oldState == .free && isAbove(of: box["Front divider top"][1], fingerTips) {
+            return .detecting
+        } else if oldState == .detecting && !isAbove(of: max(box["Back top left"][1], box["Back top right"][1]), fingerTips) {
+            return .free
+        } else {
+            return oldState
+        }
+    }
+    
+    private func isAbove(of horizon: Float, _ keypoints: [Joint]) -> Bool {
+        for joint in keypoints {
+            if Float(joint.location.y * CameraSettings.resolution.height) > horizon {
+                return true
+            }
+        }
+        return false
+    }
+    
     private func drawBoxes(_ context: CGContext, _ boxes: [BoundingBoxProviding], _ imageSize: CGSize) {
         // Draw bounding boxes for each detected face
         context.setStrokeColor(UIColor.red.cgColor)
@@ -111,18 +208,10 @@ class FrameProcessor {
         
         let keypointRadius: CGFloat = 4.0
         
-        for keypoint in keypoints {
+        for (idx, keypoint) in keypoints.enumerated() {
             // Each keypoint has format [x, y, confidence]
-//            guard keypoint.count >= 3 else { continue }
-            
             let x = CGFloat(keypoint[0])
             let y = CGFloat(keypoint[1])
-//            let confidence = keypoint[2]
-//            
-//            print("Keypoint confidence: \(confidence)")
-            
-            // Only draw confident keypoints
-//            if confidence > 0.5 {
             
             // Draw keypoint as a filled circle with white border
             let keypointRect = CGRect(
@@ -134,7 +223,35 @@ class FrameProcessor {
             
             context.fillEllipse(in: keypointRect)
             context.strokeEllipse(in: keypointRect)
-//            }
+            
+            // Draw the index of the keypoint with better visibility
+            let attributes: [NSAttributedString.Key: Any] = [
+                .font: UIFont.boldSystemFont(ofSize: 16), // Larger, bold font
+                .foregroundColor: UIColor.yellow // More visible color
+            ]
+            
+            let indexString = "\(idx)"
+            let textSize = indexString.size(withAttributes: attributes)
+            
+            // Position text slightly above the keypoint for better visibility
+            let textPoint = CGPoint(
+                x: x - textSize.width / 2,
+                y: y - textSize.height - keypointRadius - 2 // Position above the circle
+            )
+            
+            // Draw a small background rectangle for better text visibility
+            let backgroundRect = CGRect(
+                x: textPoint.x - 2,
+                y: textPoint.y - 2,
+                width: textSize.width + 4,
+                height: textSize.height + 4
+            )
+            
+            context.setFillColor(UIColor.black.withAlphaComponent(0.7).cgColor)
+            context.fill(backgroundRect)
+            
+            // Draw the text
+            indexString.draw(at: textPoint, withAttributes: attributes)
         }
     }
     

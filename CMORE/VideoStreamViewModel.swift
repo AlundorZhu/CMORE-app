@@ -166,6 +166,7 @@ class VideoStreamViewModel: NSObject, ObservableObject {
             
             // Set up video output to receive frames
             videoOutput = AVCaptureVideoDataOutput()
+            videoOutput?.alwaysDiscardsLateVideoFrames = true
             videoOutput?.setSampleBufferDelegate(self, queue: videoOutputQueue)
             
             // Add video output to the session
@@ -219,6 +220,10 @@ class VideoStreamViewModel: NSObject, ObservableObject {
         
         // Start recording with the video writer
         if videoWriter.startRecording(to: outputURL) {
+            
+            // Start the block counting algorithm
+            frameProcessor.countingBlocks = true
+            
             // Update UI
             Task { @MainActor in
                 self.isRecording = true
@@ -237,6 +242,8 @@ class VideoStreamViewModel: NSObject, ObservableObject {
         guard let videoWriter = videoWriter else { return }
         
         guard isRecording else { return }
+
+        isRecording = false
         
         // Stop recording with async/await
         Task {
@@ -276,16 +283,15 @@ extension VideoStreamViewModel: AVCaptureVideoDataOutputSampleBufferDelegate {
         let ciImage = CIImage(cvPixelBuffer: pixelBuffer)
         
         // Process the frame for face detection (runs on background thread)
-        Task.detached { [weak self] in
-            guard let self = self else { return }
+        Task {
             
-            let processedFrame = await self.frameProcessor.processFrame(ciImage)
+            let processedFrame = await frameProcessor.processFrame(ciImage)
             
             // If recording, add this frame to the video writer
             if isRecording,
-               let videoWriter = self.videoWriter,
+               let videoWriter = videoWriter,
                let processedFrame {
-                await videoWriter.appendFrame(processedFrame)
+                videoWriter.appendFrame(processedFrame)
             }
         }
     }
