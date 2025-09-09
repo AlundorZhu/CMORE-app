@@ -68,7 +68,7 @@ class VideoWriter {
     }
     
     /// Add a frame - as simple as it gets
-    func appendFrame(_ image: UIImage) async {
+    func appendFrame(_ image: UIImage) {
         guard isRecording,
               let videoInput = videoInput,
               let pixelBufferAdaptor = pixelBufferAdaptor,
@@ -77,7 +77,7 @@ class VideoWriter {
         }
         
         // Convert UIImage to pixel buffer (the only complex part we can't avoid)
-        guard let pixelBuffer = await image.toPixelBuffer() else {
+        guard let pixelBuffer = image.toPixelBuffer() else {
             print("Failed to convert image to pixel buffer")
             return
         }
@@ -112,7 +112,7 @@ class VideoWriter {
 // MARK: - UIImage Extension
 extension UIImage {
     /// Convert UIImage to CVPixelBuffer - simplified version
-    func toPixelBuffer() async -> CVPixelBuffer? {
+    func toPixelBuffer() -> CVPixelBuffer? {
         guard let cgImage = self.cgImage else { return nil }
         
         let width = cgImage.width
