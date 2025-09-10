@@ -221,6 +221,8 @@ class VideoStreamViewModel: NSObject, ObservableObject {
 
         // Don't start recording if already recording
         guard !isRecording else { return }
+        
+        isRecording = true
             
         // Create a unique filename for the recorded video
         let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
