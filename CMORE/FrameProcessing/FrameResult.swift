@@ -1,5 +1,5 @@
 //
-//  Result.swift
+//  FrameResult.swift
 //  CMORE
 //
 //  Created by ZIQIANG ZHU on 9/9/25.
