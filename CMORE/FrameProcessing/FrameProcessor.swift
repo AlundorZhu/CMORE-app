@@ -37,6 +37,8 @@ actor FrameProcessor {
     private let boxRequest: CoreMLRequest
     
     // MARK: - Private Properties
+    
+    /// The box used for the algorithm
     private var currentBox: BoxDetection?
     
     private var currentState:State = .free

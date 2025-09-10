@@ -34,6 +34,16 @@ struct VideoStreamView: View {
                         )
                 }
                 
+                // Frame result overlay when recording is active
+                if let overlay = viewModel.overlay {
+                    GeometryReader { geometry in
+                        FrameResultOverlayView(
+                            frameResult: overlay,
+                            viewSize: geometry.size
+                        )
+                    }
+                }
+                
                 // Recording overlay when recording is active
                 if viewModel.isRecording {
                     VStack {
