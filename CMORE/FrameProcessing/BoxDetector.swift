@@ -78,7 +78,7 @@ struct BoxDetector {
             
             // Normalize the results before returning it
             for idx in bestDetection.keypoints.indices {
-                bestDetection.keypoints[idx] = restoreCoordinatesFromScaleToFit(predictionCoord: bestDetection.keypoints[idx])
+                restoreCoordinatesFromScaleToFit(predictionCoord: &bestDetection.keypoints[idx])
             }
             return bestDetection
         }
@@ -87,7 +87,7 @@ struct BoxDetector {
         return nil
     }
     
-    static func restoreCoordinatesFromScaleToFit(predictionCoord: [Float], modelInputSize : CGSize = CGSize(width: 512, height: 512), OriginalImageSize: CGSize = CGSize(width: 1920, height: 1080)) -> [Float] {
+    static func restoreCoordinatesFromScaleToFit(predictionCoord: inout [Float], modelInputSize : CGSize = CGSize(width: 512, height: 512), OriginalImageSize: CGSize = CGSize(width: 1920, height: 1080)){
         
         // Vision scale longest side to input size
         let scale = min(modelInputSize.width / OriginalImageSize.width, modelInputSize.height/OriginalImageSize.height)
@@ -99,10 +99,8 @@ struct BoxDetector {
         let paddingY = (modelInputSize.height - scaledHeight) / 2.0
         
         // Restore the coordinates
-        let x = (predictionCoord[0] - Float(paddingX)) / Float(scale)
-        let y = ((Float(modelInputSize.height) - predictionCoord[1]) - Float(paddingY)) / Float(scale) // invert y for vision
-        
-        return [x, y]
+        predictionCoord[0] = (predictionCoord[0] - Float(paddingX)) / Float(scale)
+        predictionCoord[1] = ((Float(modelInputSize.height) - predictionCoord[1]) - Float(paddingY)) / Float(scale) // invert y for vision
     }
     
 // MARK: - Private
