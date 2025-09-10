@@ -11,7 +11,7 @@ import UIKit
 
 // MARK: - Simple Video Writer
 /// Dead simple video writer - just feed it UIImages
-class VideoWriter {
+actor VideoWriter {
     
     // MARK: - Properties
     private var assetWriter: AVAssetWriter?

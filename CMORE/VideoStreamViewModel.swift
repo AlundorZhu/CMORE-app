@@ -26,6 +26,9 @@ class VideoStreamViewModel: NSObject, ObservableObject {
     /// Whether to show the save confirmation dialog
     @Published var showSaveConfirmation = false
     
+    /// Show the visualization overlay in real-time
+    @Published var overlay: FrameResult?
+    
     /// The main camera capture session - manages camera input and output
     public private(set) var captureSession: AVCaptureSession?
     
@@ -37,6 +40,12 @@ class VideoStreamViewModel: NSObject, ObservableObject {
     
     /// Custom video writer for recording processed frames with face detection
     private var videoWriter: VideoWriter?
+    
+    /// Number of frames currently waiting to get processed
+    private var numFrameBehind: Int = 0
+    
+    /// Maximum of frames allowed to buffer before droping frames
+    private let maxFrameBehind: Int = 3
     
     /// Background queue for processing video frames (keeps UI responsive)
     private let videoOutputQueue = DispatchQueue(label: "videoOutputQueue", qos: .userInitiated)
@@ -209,30 +218,31 @@ class VideoStreamViewModel: NSObject, ObservableObject {
             print("Video writer not available")
             return
         }
-        
+
         // Don't start recording if already recording
         guard !isRecording else { return }
-        
+            
         // Create a unique filename for the recorded video
         let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
         let videoFileName = "CMORE_Recording_\(Date().timeIntervalSince1970).mov"
         let outputURL = documentsPath.appendingPathComponent(videoFileName)
         
         // Start recording with the video writer
-        if videoWriter.startRecording(to: outputURL) {
-            
-            // Start the block counting algorithm
-            frameProcessor.countingBlocks = true
-            
-            // Update UI
-            Task { @MainActor in
-                self.isRecording = true
-                self.recordingStatusMessage = "Recording started with face detection..."
-                self.currentVideoURL = outputURL
-            }
-        } else {
-            Task { @MainActor in
-                self.recordingStatusMessage = "Failed to start recording"
+        Task{
+            if await videoWriter.startRecording(to: outputURL) {
+                
+                // Start the block counting algorithm
+                await frameProcessor.startCountingBlocks()
+                
+                // Update UI
+                await MainActor.run {
+                    self.recordingStatusMessage = "Recording started with face detection..."
+                    self.currentVideoURL = outputURL
+                }
+            } else {
+                await MainActor.run {
+                    self.recordingStatusMessage = "Failed to start recording"
+                }
             }
         }
     }
@@ -241,12 +251,15 @@ class VideoStreamViewModel: NSObject, ObservableObject {
     private func stopRecording() {
         guard let videoWriter = videoWriter else { return }
         
+        /// Recording has to be started
         guard isRecording else { return }
-
         isRecording = false
         
         // Stop recording with async/await
         Task {
+            
+            await frameProcessor.stopCountingBlocks()
+            
             let result = await videoWriter.stopRecording()
             
             await MainActor.run {
@@ -276,6 +289,15 @@ extension VideoStreamViewModel: AVCaptureVideoDataOutputSampleBufferDelegate {
     ///   - sampleBuffer: The frame data
     ///   - connection: The connection information
     func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
+        
+        // Avoid pile up on frames
+        guard numFrameBehind < maxFrameBehind else {
+            print("Frame skipped!")
+            return
+        }
+        
+        numFrameBehind += 1
+        
         // Extract the pixel buffer from the sample buffer
         guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
         
@@ -284,15 +306,20 @@ extension VideoStreamViewModel: AVCaptureVideoDataOutputSampleBufferDelegate {
         
         // Process the frame for face detection (runs on background thread)
         Task {
+            let processedResult = await frameProcessor.processFrame(ciImage)
             
-            let processedFrame = await frameProcessor.processFrame(ciImage)
+            await MainActor.run {
+                self.overlay = processedResult
+            }
+            
+            numFrameBehind -= 1
+            
             
             // If recording, add this frame to the video writer
-            if isRecording,
-               let videoWriter = videoWriter,
-               let processedFrame {
-                videoWriter.appendFrame(processedFrame)
-            }
+//            if isRecording,
+//               let videoWriter = videoWriter {
+//                videoWriter.appendFrame(processedFrame)
+//            }
         }
     }
 }

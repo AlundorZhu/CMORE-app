@@ -12,9 +12,10 @@ import AVFoundation
 import UIKit
 
 // MARK: - Frame Processor
+/// Making it an actor so only one frame get processed at a time
 /// Handles processing of individual video frames from the camera or video files
 /// Processes frames for face detection and can return frames with bounding boxes drawn
-class FrameProcessor {
+actor FrameProcessor {
     
     enum State {
         case free
@@ -23,13 +24,15 @@ class FrameProcessor {
     
     // MARK: - Public Properties
     
-    public var countingBlocks = false
+    public private(set) var countingBlocks = false
     
     // MARK: - Private ML Requests
     
     private let facesRequest = DetectFaceRectanglesRequest()
     
     private let handsRequest = DetectHumanHandPoseRequest()
+    
+//    private let blocksRequest =
     
     private let boxRequest: CoreMLRequest
     
@@ -49,9 +52,19 @@ class FrameProcessor {
         self.boxRequest = request
     }
     
+    func startCountingBlocks() {
+        self.countingBlocks = true
+    }
+    
+    func stopCountingBlocks() {
+        self.countingBlocks = false
+    }
+    
     /// Processes a single frame from the camera or video
     /// - Parameter ciImage: The frame to process as a Core Image
-    func processFrame(_ ciImage: CIImage) async -> UIImage?{
+    func processFrame(_ ciImage: CIImage) async -> FrameResult {
+        
+        var result = FrameResult(processingState: currentState)
         
         if !countingBlocks {
             async let faces = try? facesRequest.perform(on: ciImage)
@@ -63,20 +76,22 @@ class FrameProcessor {
                 let outputArray = boxRequestResult.first?.featureValue.shapedArrayValue(of: Float.self) {
                     boxDetected = BoxDetector.processKeypointOutput(outputArray)
                     currentBox = boxDetected
+                    result.boxDetection = boxDetected
                 }
         
+            result.faces = await faces
             
-            return visualize(boxes: await faces, keypoints: boxDetected?.keypoints, on: ciImage)
+            return result
         }
         
         async let hands = try? handsRequest.perform(on: ciImage)
         guard let hands = await hands,
               hands.count > 0 else {
-            return nil
+            return result
         }
         
         guard let currentBox = currentBox else {
-            return nil
+            fatalError("Bad Box!")
         }
         
         currentState = transition(from: currentState, hand: hands.first!, box: currentBox)
@@ -114,7 +129,7 @@ class FrameProcessor {
 //        }
         
         // TODO remove it
-        return nil
+        return result
     }
     
     func visualize(boxes: [BoundingBoxProviding]?, keypoints: [[Float]]?, on ciImage: CIImage) -> UIImage? {
@@ -208,7 +223,7 @@ class FrameProcessor {
         
         let keypointRadius: CGFloat = 4.0
         
-        for (idx, keypoint) in keypoints.enumerated() {
+        for keypoint in keypoints {
             // Each keypoint has format [x, y, confidence]
             let x = CGFloat(keypoint[0])
             let y = CGFloat(keypoint[1])
@@ -223,36 +238,7 @@ class FrameProcessor {
             
             context.fillEllipse(in: keypointRect)
             context.strokeEllipse(in: keypointRect)
-            
-            // Draw the index of the keypoint with better visibility
-            let attributes: [NSAttributedString.Key: Any] = [
-                .font: UIFont.boldSystemFont(ofSize: 16), // Larger, bold font
-                .foregroundColor: UIColor.yellow // More visible color
-            ]
-            
-            let indexString = "\(idx)"
-            let textSize = indexString.size(withAttributes: attributes)
-            
-            // Position text slightly above the keypoint for better visibility
-            let textPoint = CGPoint(
-                x: x - textSize.width / 2,
-                y: y - textSize.height - keypointRadius - 2 // Position above the circle
-            )
-            
-            // Draw a small background rectangle for better text visibility
-            let backgroundRect = CGRect(
-                x: textPoint.x - 2,
-                y: textPoint.y - 2,
-                width: textSize.width + 4,
-                height: textSize.height + 4
-            )
-            
-            context.setFillColor(UIColor.black.withAlphaComponent(0.7).cgColor)
-            context.fill(backgroundRect)
-            
-            // Draw the text
-            indexString.draw(at: textPoint, withAttributes: attributes)
         }
     }
-    
 }
+
