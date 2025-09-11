@@ -10,8 +10,8 @@ import AVFoundation
 // MARK: - Video Stream Interface
 /// This view handles camera recording functionality with a simple one-button interface
 struct VideoStreamView: View {
-    // @StateObject creates and manages the ViewModel for this view
-    // It ensures the ViewModel persists for the lifetime of this view
+    
+    /// Tell swiftUI to refresh whenever this changes
     @ObservedObject var viewModel: VideoStreamViewModel
     
     var body: some View {
