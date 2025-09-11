@@ -12,7 +12,7 @@ import AVFoundation
 struct VideoStreamView: View {
     // @StateObject creates and manages the ViewModel for this view
     // It ensures the ViewModel persists for the lifetime of this view
-    @StateObject private var viewModel = VideoStreamViewModel()
+    @ObservedObject var viewModel: VideoStreamViewModel
     
     var body: some View {
         // VStack arranges elements vertically (top to bottom)
@@ -121,5 +121,5 @@ struct VideoStreamView: View {
 // MARK: - Preview
 /// SwiftUI preview for development - allows seeing the UI in Xcode's canvas
 #Preview {
-    VideoStreamView()
+    VideoStreamView(viewModel: VideoStreamViewModel())
 }
