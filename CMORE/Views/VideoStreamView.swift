@@ -15,8 +15,8 @@ struct VideoStreamView: View {
     @ObservedObject var viewModel: VideoStreamViewModel
     
     var body: some View {
-        // VStack arranges elements vertically (top to bottom)
-        VStack {
+        // HStack arranges elements horizontally for landscape orientation
+        HStack(spacing: 20) {
             // MARK: - Video Display Area
             // ZStack layers elements on top of each other
             ZStack {
@@ -65,36 +65,52 @@ struct VideoStreamView: View {
                     }
                 }
             }
-            // .frame(height: 400) // Fixed height for the video display area
-            .aspectRatio(CameraSettings.resolution.height / CameraSettings.resolution.width, contentMode: .fit)
+            // Use proper aspect ratio for landscape camera view (1920x1080 = 16:9)
+            .aspectRatio(CameraSettings.resolution.width / CameraSettings.resolution.height, contentMode: .fit)
             .cornerRadius(12) // Rounded corners for the camera view
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
             
-            // MARK: - Single Recording Button
-            // Simple one-button interface for recording
-            Button {
-                viewModel.toggleRecording()
-            } label: {
-                Text(viewModel.isRecording ? "Stop Recording" : "Start Recording")
-                    .font(.title2)
-                    .fontWeight(.semibold)
-                    .padding(.horizontal, 30)
-                    .padding(.vertical, 15)
+            // MARK: - Control Panel (Right Side)
+            // VStack for vertical arrangement of controls in the right panel
+            VStack(spacing: 30) {
+                Spacer()
+                
+                // MARK: - Single Recording Button
+                // Simple one-button interface for recording
+                Button {
+                    viewModel.toggleRecording()
+                } label: {
+                    VStack(spacing: 8) {
+                        Image(systemName: viewModel.isRecording ? "stop.circle.fill" : "record.circle")
+                            .font(.system(size: 40))
+                            .foregroundColor(.white)
+                        
+                        Text(viewModel.isRecording ? "Stop Recording" : "Start Recording")
+                            .font(.headline)
+                            .fontWeight(.semibold)
+                            .multilineTextAlignment(.center)
+                    }
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 20)
                     // Dynamic color: red when recording, green when stopped
                     .background(viewModel.isRecording ? Color.red : Color.green)
                     .foregroundColor(.white)
-                    .cornerRadius(25)
+                    .cornerRadius(20)
+                }
+                
+                // MARK: - Recording Status
+                // Show recording status message when available
+                if let statusMessage = viewModel.recordingStatusMessage {
+                    Text(statusMessage)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 10)
+                }
+                
+                Spacer()
             }
-            .padding(.top, 20)
-            
-            // MARK: - Recording Status
-            // Show recording status message when available
-            if let statusMessage = viewModel.recordingStatusMessage {
-                Text(statusMessage)
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                    .padding(.top, 10)
-                    .multilineTextAlignment(.center)
-            }
+            .frame(width: 200) // Fixed width for control panel
         }
         .padding()
         // Start camera automatically when view appears

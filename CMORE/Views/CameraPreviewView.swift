@@ -15,7 +15,15 @@ struct CameraPreviewView: UIViewRepresentable {
     func makeUIView(context: Context) -> CameraPreviewUIView {
         let view = CameraPreviewUIView()
         view.previewLayer.session = session
-        view.previewLayer.videoGravity = .resizeAspect
+        view.previewLayer.videoGravity = .resizeAspectFill
+        
+        // Set orientation after session is assigned
+        DispatchQueue.main.async {
+            if let connection = view.previewLayer.connection, connection.isVideoOrientationSupported {
+                connection.videoOrientation = .landscapeRight
+            }
+        }
+        
         return view
     }
     
@@ -24,6 +32,11 @@ struct CameraPreviewView: UIViewRepresentable {
         if uiView.previewLayer.session !== session {
             uiView.previewLayer.session = session
         }
+        
+        // Ensure orientation is set correctly
+        if let connection = uiView.previewLayer.connection, connection.isVideoOrientationSupported {
+            connection.videoOrientation = .landscapeRight
+        }
     }
 }
 
@@ -31,7 +44,7 @@ struct CameraPreviewView: UIViewRepresentable {
 class CameraPreviewUIView: UIView {
     lazy var previewLayer: AVCaptureVideoPreviewLayer = {
         let layer = AVCaptureVideoPreviewLayer()
-        layer.videoGravity = .resizeAspect
+        layer.videoGravity = .resizeAspectFill
         return layer
     }()
     
@@ -47,6 +60,10 @@ class CameraPreviewUIView: UIView {
     
     private func setupLayer() {
         layer.addSublayer(previewLayer)
+        // Set fixed orientation for landscape right since app is locked to this orientation
+        if let connection = previewLayer.connection, connection.isVideoOrientationSupported {
+            connection.videoOrientation = .landscapeRight
+        }
     }
     
     override func layoutSubviews() {
