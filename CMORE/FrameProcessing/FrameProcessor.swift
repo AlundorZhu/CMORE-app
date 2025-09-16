@@ -32,7 +32,7 @@ actor FrameProcessor {
     
     private let handsRequest = DetectHumanHandPoseRequest()
     
-//    private let blocksRequest =
+    private let blocksRequest: CoreMLRequest
     
     private let boxRequest: CoreMLRequest
     
@@ -50,6 +50,11 @@ actor FrameProcessor {
         var request = CoreMLRequest(model: keypointModelContainer)
         request.cropAndScaleAction = .scaleToFit
         self.boxRequest = request
+        
+        /// Craft the blockDetection request
+        let blockModelContainer = BlockDetector.createBlockDetector()
+        /// Default resize action is scaleToFill
+        self.blocksRequest = CoreMLRequest(model: blockModelContainer)
     }
     
     func startCountingBlocks() {
@@ -65,9 +70,10 @@ actor FrameProcessor {
     func processFrame(_ ciImage: CIImage) async -> FrameResult {
         
         var result = FrameResult(processingState: currentState)
+        async let faces = try? facesRequest.perform(on: ciImage)
         
+        /// Before the algorithm starts, locate the box
         if !countingBlocks {
-            async let faces = try? facesRequest.perform(on: ciImage)
             async let box = try? boxRequest.perform(on: ciImage)
             
             var boxDetected: BoxDetection? = nil
@@ -75,19 +81,26 @@ actor FrameProcessor {
             if let boxRequestResult = await box as? [CoreMLFeatureValueObservation],
                 let outputArray = boxRequestResult.first?.featureValue.shapedArrayValue(of: Float.self) {
                     boxDetected = BoxDetector.processKeypointOutput(outputArray)
+                    /// Assume the box doesn't move for the rest of the time
                     currentBox = boxDetected
                     result.boxDetection = boxDetected
                 }
         
             result.faces = await faces
-            
             return result
         }
         
+        /// The block counting algorithm
         async let hands = try? handsRequest.perform(on: ciImage)
         guard let hands = await hands,
               hands.count > 0 else {
             return result
+        }
+        
+        /// simulate the load by running the block detector after hand is avaliable
+        let blocks = try? await blocksRequest.perform(on: ciImage)
+        if let blocks = blocks {
+            print(blocks)
         }
         
         guard let currentBox = currentBox else {
