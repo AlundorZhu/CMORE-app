@@ -45,7 +45,7 @@ class VideoStreamViewModel: NSObject, ObservableObject {
     private var numFrameBehind: Int = 0
     
     /// Maximum of frames allowed to buffer before droping frames
-    private let maxFrameBehind: Int = 3
+    private let maxFrameBehind: Int = 6
     
     /// Background queue for processing video frames (keeps UI responsive)
     private let videoOutputQueue = DispatchQueue(label: "videoOutputQueue", qos: .userInitiated)
@@ -117,50 +117,100 @@ class VideoStreamViewModel: NSObject, ObservableObject {
         return ISO * Float(factor)
     }
     
+    // Check supported format
+    private func getFormat(for device: AVCaptureDevice) -> AVCaptureDevice.Format {
+        
+//         List available formats
+//         for format in device.formats {
+//             let desc = format.formatDescription
+//             let dimensions = CMVideoFormatDescriptionGetDimensions(desc)
+//             print("Format: \(dimensions.width)x\(dimensions.height)")
+//
+//             let frameRateRanges = format.videoSupportedFrameRateRanges
+//             for range in frameRateRanges {
+//                 print("  Frame rate: \(range.minFrameRate)-\(range.maxFrameRate)")
+//             }
+//
+//             print("  ISO range: \(format.minISO)-\(format.maxISO)")
+//             print("  Shutter range: \(format.minExposureDuration)-\(format.maxExposureDuration)")
+//         }
+        let allFormats = device.formats
+            
+        // Break down the complex condition into separate predicates
+        let hasCorrectResolution: (AVCaptureDevice.Format) -> Bool = { format in
+            format.formatDescription.dimensions.width == 1920 &&
+            format.formatDescription.dimensions.height == 1080
+        }
+        
+        let hasDepthDataSupport: (AVCaptureDevice.Format) -> Bool = { format in
+            !format.supportedDepthDataFormats.isEmpty
+        }
+        
+        let supports120fps: (AVCaptureDevice.Format) -> Bool = { format in
+            format.videoSupportedFrameRateRanges.contains { (range: AVFrameRateRange) in
+                range.minFrameRate <= CameraSettings.frameRate && CameraSettings.frameRate <= range.maxFrameRate
+            }
+        }
+        
+        // Combine the conditions
+        guard let targetFormat = (allFormats.last { format in
+            hasCorrectResolution(format) &&
+            hasDepthDataSupport(format) &&
+            supports120fps(format)
+        }) else {
+            fatalError("No supported format")
+        }
+        
+        return targetFormat
+    }
+    
     /// Sets up the camera capture session
     /// Camera starts automatically, no separate streaming control needed
     private func setupCamera() {
-        // Get the default wide-angle camera (back camera)
-        guard let camera = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back) else {
-            print("Failed to get camera device")
+        // Get the default LiDAR depth camera (back camera)
+        guard let camera = AVCaptureDevice.default(.builtInLiDARDepthCamera, for: .video, position: .back) else {
+            print("Failed to get camera with LiDAR device")
             return
         }
+
+        let format = getFormat(for: camera)
         
         do {
             // Configure camera settings before creating capture session
             try camera.lockForConfiguration()
+
+            camera.activeFormat = format
+            /// Set the max exposure duration to allow faster shutter speeds (not possible)
+            // camera.activeFormat.maxExposureDuration = CameraSettings.maxExposureDuration
+            /// Set the minimum frame duration to control frame rate
+            camera.activeVideoMinFrameDuration = CameraSettings.minFrameDuration
             
-            // Set frame rate
-            camera.activeVideoMinFrameDuration = CameraSettings.frameRate
-            camera.activeVideoMaxFrameDuration = CameraSettings.frameRate
+            // let newISO = calculateISO(
+            //     old: camera.exposureDuration,
+            //     new: CameraSettings.ShutterSpeed,
+            //     current: camera.iso
+            // )
 
-            let newISO = calculateISO(
-                old: camera.exposureDuration,
-                new: CameraSettings.ShutterSpeed,
-                current: camera.iso
-            )
+            // print("Current ISO: \(camera.iso)")
+            // print("Target ISO: \(newISO)")
 
-            print("Current ISO: \(camera.iso)")
-            print("Target ISO: \(newISO)")
+            // print("Current Shutter Speed: \(camera.exposureDuration)")
 
-            print("Current Shutter Speed: \(camera.exposureDuration)")
-
-            let clampedISO = min(max(newISO, camera.activeFormat.minISO), camera.activeFormat.maxISO)
-            print("Clamped ISO: \(clampedISO)")
-
-
-            // Set shutter speed
-            camera.setExposureModeCustom(
-                duration: CameraSettings.ShutterSpeed,
-                iso: clampedISO,
-                completionHandler: { (timestamp) in
-                    // This runs after the camera has actually applied the new settings
-                    print("Shutter Speed (after): \(camera.exposureDuration)")
-                    print("ISO (after): \(camera.iso)")
-                }
-            )
+            // let clampedISO = min(max(newISO, camera.activeFormat.minISO), camera.activeFormat.maxISO)
+            // print("Clamped ISO: \(clampedISO)")
 
             camera.unlockForConfiguration()
+            
+            print("Selected video format: \(camera.activeFormat)")
+            
+            // print the actual shutter speed and frame rate
+            let shutterSpeed = camera.exposureDuration.seconds
+            print("Shutter Speed: 1/\(Int(1 / shutterSpeed)) seconds")
+            
+            // print the actual frame rate
+            let actualFrameRate = 1.0 / camera.activeVideoMinFrameDuration.seconds
+            print("Frame Rate: \(actualFrameRate) fps")
+            
             
             // Create and configure the capture session
             captureSession = AVCaptureSession()

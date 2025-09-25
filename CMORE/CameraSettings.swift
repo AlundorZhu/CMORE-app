@@ -9,13 +9,15 @@ import AVFoundation
 import CoreGraphics
 
 struct CameraSettings {
-    static var resolution: CGSize = CGSize(width: 1920, height: 1080)
-    static var frameRate: CMTime = CMTime(value: 1, timescale: 30)
-    static var fps : Double = 30
-    static var ShutterSpeed: CMTime = CMTime(value: 1, timescale: 500) // 1/500 second
+    static let resolution: CGSize = CGSize(width: 1920, height: 1080)
+//     static var frameRate: CMTime = CMTime(value: 1, timescale: 60)
+    static let frameRate = 60.0
+    static let minFrameDuration: CMTime = CMTime(value: 1, timescale: 60) // min 30 fps
+    // static var fps : Double = 30
+    static let maxExposureDuration: CMTime = CMTime(value: 1, timescale: 240) // 1/240 second
     
     // Video encoding settings
-    static var videoCodec: AVVideoCodecType = .h264
-    static var averageBitRate: Int = 4000000 // 4 Mbps
-    static var profileLevel: String = AVVideoProfileLevelH264BaselineAutoLevel
+    static let videoCodec: AVVideoCodecType = .h264
+    static let averageBitRate: Int = 4000000 // 4 Mbps
+    static let profileLevel: String = AVVideoProfileLevelH264BaselineAutoLevel
 }
