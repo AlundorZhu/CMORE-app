@@ -20,19 +20,30 @@ struct VideoStreamView: View {
             // MARK: - Video Display Area
             // ZStack layers elements on top of each other
             ZStack {
-                // Show the live camera preview using preview layer
-                if let session = viewModel.captureSession {
-                    CameraPreviewView(session: session)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else {
-                    // Placeholder when camera is not available
-                    Color.black
-                        .overlay(
-                            Text("Camera will appear here")
-                                .foregroundColor(.white)
-                                .font(.title2)
-                        )
-                }
+                Group {
+                    // Show the live camera preview using preview layer
+                    if let session = viewModel.captureSession {
+                        CameraPreviewView(session: session)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    } else {
+                        // Placeholder when camera is not available
+                        Color.black
+                            .overlay(
+                                Text("Camera will appear here")
+                                    .foregroundColor(.white)
+                                    .font(.title2)
+                            )
+                    }
+                }.overlay(
+                    GeometryReader { geo in
+                        if let overlay = viewModel.overlay,
+                           let faces = overlay.faces {
+                            ForEach(faces.indices, id: \.self) { i in
+                                BoundingBoxView(geo: geo, box: faces[i])
+                            }
+                        }
+                    }
+                )
                 
                 // Recording overlay when recording is active
                 if viewModel.isRecording {
