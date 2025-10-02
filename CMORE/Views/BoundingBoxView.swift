@@ -10,18 +10,24 @@ import Vision
 
 struct BoundingBoxView: View {
     let geo: GeometryProxy
-    let box: BoundingBoxProviding
+    let normalizedBox: NormalizedRect
+    
+    init(_ geo: GeometryProxy, _ bbox: BoundingBoxProviding) {
+        self.geo = geo
+        self.normalizedBox = bbox.boundingBox
+    }
 
     var body: some View {
+        let rect = normalizedBox.toImageCoordinates(geo.size, origin: .upperLeft)
         Rectangle()
             .stroke(Color.red, lineWidth: 2)
             .frame(
-                width: box.boundingBox.width * geo.size.width,
-                height: box.boundingBox.height * geo.size.height
+                width: rect.width,
+                height: rect.height
             )
             .position(
-                x: (box.boundingBox.origin.x + box.boundingBox.width / 2) * geo.size.width,
-                y: (1 - (box.boundingBox.origin.y + box.boundingBox.height / 2)) * geo.size.height
+                x: rect.midX,
+                y: rect.midY
             )
     }
 }

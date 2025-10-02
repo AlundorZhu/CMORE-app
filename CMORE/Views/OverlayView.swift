@@ -20,7 +20,7 @@ struct OverlayView: View {
     var body: some View {
         if let faces = overlay.faces {
             ForEach(faces.indices, id: \.self) { i in
-                BoundingBoxView(geo: geometry, box: faces[i])
+                BoundingBoxView(geometry, faces[i])
             }
         }
         
