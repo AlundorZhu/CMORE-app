@@ -67,11 +67,6 @@ class VideoStreamViewModel: NSObject, ObservableObject {
     
     // MARK: - Public Methods
     
-    /// Starts the camera automatically when the app launches
-    func startCameraAutomatically() {
-        guard captureSession?.isRunning != true else { return }
-        startCamera()
-    }
     
     /// Toggles video recording on/off (main functionality)
     func toggleRecording() {
@@ -107,6 +102,16 @@ class VideoStreamViewModel: NSObject, ObservableObject {
             try? await Task.sleep(for: .seconds(2))
             self.recordingStatusMessage = nil
         }
+    }
+    
+    /// Starts the camera feed
+    func startCamera() async {
+        guard captureSession?.isRunning != true else { return }
+        guard let captureSession = captureSession else {
+            print("Capture session not available")
+            return
+        }
+        captureSession.startRunning()
     }
     
     // MARK: - Private Methods
@@ -146,7 +151,7 @@ class VideoStreamViewModel: NSObject, ObservableObject {
             !format.supportedDepthDataFormats.isEmpty
         }
         
-        let supports120fps: (AVCaptureDevice.Format) -> Bool = { format in
+        let supportsFrameRate: (AVCaptureDevice.Format) -> Bool = { format in
             format.videoSupportedFrameRateRanges.contains { (range: AVFrameRateRange) in
                 range.minFrameRate <= CameraSettings.frameRate && CameraSettings.frameRate <= range.maxFrameRate
             }
@@ -156,7 +161,7 @@ class VideoStreamViewModel: NSObject, ObservableObject {
         guard let targetFormat = (allFormats.last { format in
             hasCorrectResolution(format) &&
             hasDepthDataSupport(format) &&
-            supports120fps(format)
+            supportsFrameRate(format)
         }) else {
             fatalError("No supported format")
         }
@@ -238,19 +243,6 @@ class VideoStreamViewModel: NSObject, ObservableObject {
             
         } catch {
             print("Error setting up camera: \(error)")
-        }
-    }
-    
-    /// Starts the camera feed (called automatically)
-    private func startCamera() {
-        
-        guard let captureSession = captureSession else {
-            print("Capture session not available")
-            return
-        }
-        // Use Task for async operation to avoid blocking the UI
-        Task {
-            captureSession.startRunning()
         }
     }
     

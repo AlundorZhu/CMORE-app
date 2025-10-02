@@ -64,10 +64,6 @@ struct VideoStreamView: View {
             CmoreUI(viewModel)
         }
         .ignoresSafeArea()
-        // Start camera automatically when view appears
-        .onAppear {
-            viewModel.startCameraAutomatically()
-        }
         // Save/discard confirmation after recording ends
         .alert("Save Video?", isPresented: $viewModel.showSaveConfirmation) {
             Button("Save to Photos") {

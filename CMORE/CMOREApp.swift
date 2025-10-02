@@ -21,6 +21,9 @@ struct CMOREApp: App {
         // ContentView() is the first screen users will see
         WindowGroup {
             VideoStreamView(viewModel: realTimeStream)
+                .task{
+                    await realTimeStream.startCamera()
+                }
         }
     }
 }
