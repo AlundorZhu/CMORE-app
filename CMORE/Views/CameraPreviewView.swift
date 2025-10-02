@@ -8,66 +8,36 @@
 import SwiftUI
 import AVFoundation
 
-/// A SwiftUI view that displays a live camera preview using AVCaptureVideoPreviewLayer
+/// A SwiftUI view that displays a live camera preview using AVCaptureVideoPreviewLayer.
+/// The app is locked to landscapeRight, and orientation is configured at the session level.
 struct CameraPreviewView: UIViewRepresentable {
     let session: AVCaptureSession
-    
+
     func makeUIView(context: Context) -> CameraPreviewUIView {
         let view = CameraPreviewUIView()
-        view.previewLayer.session = session
         view.previewLayer.videoGravity = .resizeAspectFill
-        
-        // Set orientation after session is assigned
-        DispatchQueue.main.async {
-            if let connection = view.previewLayer.connection, connection.isVideoOrientationSupported {
-                connection.videoOrientation = .landscapeRight
-            }
-        }
-        
+        view.previewLayer.session = session
+        view.applyLandscapeRightOrientation()
         return view
     }
-    
+
     func updateUIView(_ uiView: CameraPreviewUIView, context: Context) {
-        // Update the session if needed
-        if uiView.previewLayer.session !== session {
-            uiView.previewLayer.session = session
-        }
-        
-        // Ensure orientation is set correctly
-        if let connection = uiView.previewLayer.connection, connection.isVideoOrientationSupported {
-            connection.videoOrientation = .landscapeRight
-        }
+        // Do nothing
     }
 }
 
-/// UIView wrapper for AVCaptureVideoPreviewLayer
-class CameraPreviewUIView: UIView {
-    lazy var previewLayer: AVCaptureVideoPreviewLayer = {
-        let layer = AVCaptureVideoPreviewLayer()
-        layer.videoGravity = .resizeAspectFill
-        return layer
-    }()
-    
-    override init(frame: CGRect) {
-        super.init(frame: frame)
-        setupLayer()
-    }
-    
-    required init?(coder: NSCoder) {
-        super.init(coder: coder)
-        setupLayer()
-    }
-    
-    private func setupLayer() {
-        layer.addSublayer(previewLayer)
-        // Set fixed orientation for landscape right since app is locked to this orientation
-        if let connection = previewLayer.connection, connection.isVideoOrientationSupported {
-            connection.videoOrientation = .landscapeRight
+/// UIView whose backing layer is an AVCaptureVideoPreviewLayer.
+/// Using the layer directly avoids sublayer management and explicit layout.
+final class CameraPreviewUIView: UIView {
+    override class var layerClass: AnyClass { AVCaptureVideoPreviewLayer.self }
+
+    var previewLayer: AVCaptureVideoPreviewLayer { layer as! AVCaptureVideoPreviewLayer }
+
+    /// Applies a fixed landscapeRight orientation to the preview layer's connection.
+    func applyLandscapeRightOrientation() {
+        guard let connection = previewLayer.connection else { return }
+        if connection.isVideoRotationAngleSupported(0) {
+            connection.videoRotationAngle = 0
         }
-    }
-    
-    override func layoutSubviews() {
-        super.layoutSubviews()
-        previewLayer.frame = bounds
     }
 }
