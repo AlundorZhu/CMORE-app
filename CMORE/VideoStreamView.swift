@@ -40,11 +40,8 @@ struct VideoStreamView: View {
                         // actual drawing rect. This doesn't control layout; it only reads size.
                         .overlay(
                             GeometryReader { localGeo in
-                                if let overlay = viewModel.overlay,
-                                   let faces = overlay.faces {
-                                    ForEach(faces.indices, id: \.self) { i in
-                                        BoundingBoxView(geo: localGeo, box: faces[i])
-                                    }
+                                if let overlay = viewModel.overlay {
+                                    OverlayView(overlay, localGeo)
                                 }
                             }
                         )
