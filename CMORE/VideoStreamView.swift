@@ -30,21 +30,19 @@ struct VideoStreamView: View {
             // MARK: - Live Preview (fits into available space; no cropping)
             Group {
                 if let session = viewModel.captureSession {
-                    // Live camera preview sized by aspect ratio and allowed to take
-                    // as much space as possible inside the screen.
-                    CameraPreviewView(session: session)
-                        .aspectRatio(streamAspect, contentMode: .fit)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        // Face bounding boxes overlay, sized to the preview area only.
-                        // Keep this local GeometryReader so boxes align with the preview's
-                        // actual drawing rect. This doesn't control layout; it only reads size.
-                        .overlay(
-                            GeometryReader { localGeo in
-                                if let overlay = viewModel.overlay {
-                                    OverlayView(overlay, localGeo)
-                                }
+                    // Live camera preview with overlay in a ZStack
+                    ZStack {
+                        CameraPreviewView(session: session)
+                        
+                        // Face bounding boxes overlay, constrained to the same space as camera preview
+                        GeometryReader { localGeo in
+                            if let overlay = viewModel.overlay {
+                                OverlayView(overlay, localGeo)
                             }
-                        )
+                        }
+                    }
+                    .aspectRatio(streamAspect, contentMode: .fit)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
                     // Placeholder when camera is not available yet, maintaining 16:9 fit.
                     Color.black
