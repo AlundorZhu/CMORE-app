@@ -27,6 +27,34 @@ struct OverlayView: View {
         if let boxDetection = overlay.boxDetection {
             BoxView(geometry, boxDetection)
         }
+        
+        if let hands = overlay.handPoses {
+            ForEach(hands.indices, id: \.self) { i in
+                HandView(geometry, hands[i])
+            }
+        }
+    }
+}
+
+struct HandView: View {
+    let geo: GeometryProxy
+    let hand: HumanHandPoseObservation
+    let normalizedPoints: [NormalizedPoint]
+    
+    init(_ geo: GeometryProxy, _ hand: HumanHandPoseObservation) {
+        self.geo = geo
+        self.hand = hand
+        var landMarks: [NormalizedPoint] = []
+        
+        for joint in hand.allJoints().values {
+            landMarks.append(joint.location)
+        }
+        
+        normalizedPoints = landMarks
+    }
+    
+    var body: some View {
+        KeypointsView(geo, normalizedPoints)
     }
 }
 
@@ -52,12 +80,6 @@ struct BoxView: View {
     }
     
     var body: some View {
-        ForEach(normalizedKeypoints.indices, id: \.self) { index in
-            let pos = normalizedKeypoints[index].toImageCoordinates(geo.size, origin: .upperLeft)
-            Circle()
-                .fill(Color.red)
-                .frame(width: 8, height: 8)
-                .position(x: pos.x, y: pos.y)
-        }
+        KeypointsView(geo, normalizedKeypoints)
     }
 }

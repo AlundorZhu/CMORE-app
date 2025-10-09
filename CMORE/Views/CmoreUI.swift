@@ -48,9 +48,8 @@ struct MovieCaptureButton: View {
                 .foregroundColor(Color.white)
             Button {
                 withAnimation(.easeInOut(duration: 0.25)) {
-                    isRecording.toggle()
+                    action(isRecording)
                 }
-                action(isRecording)
             } label: {
                 GeometryReader { geometry in
                     RoundedRectangle(cornerRadius: geometry.size.width / (isRecording ? 4.0 : 2.0))
