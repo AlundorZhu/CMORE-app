@@ -20,6 +20,7 @@ actor FrameProcessor {
     enum State {
         case free
         case detecting
+        case crossed
     }
     
     // MARK: - Public Properties
@@ -168,6 +169,10 @@ actor FrameProcessor {
             return .detecting
         } else if oldState == .detecting && !isAbove(of: max(box["Back top left"][1], box["Back top right"][1]), fingerTips) {
             return .free
+        } else if oldState == .detecting && crossed(divider:(box["Front divider top"], box["Front top middle"], box["Back divider top"]), fingerTips, handedness: hand.chirality!) {
+            return .crossed
+        } else if oldState == .crossed && !crossed(divider:(box["Front divider top"], box["Front top middle"], box["Back divider top"]), fingerTips, handedness: hand.chirality!) && !isAbove(of: max(box["Back top left"][1], box["Back top right"][1]), fingerTips) {
+            return .free
         } else {
             return oldState
         }
@@ -181,5 +186,39 @@ actor FrameProcessor {
         }
         return false
     }
-}
+    
+    /// Returns true if any fingertip crosses the divider polyline.
+    /// - Parameters:
+    ///   - divider: Tuple of three points (front/top, front/middle, back/top) as [x, y] in image space.
+    ///   - keypoints: Hand joints to test.
+    private func crossed(divider: ([Float], [Float], [Float]), _ keypoints: [Joint], handedness: HumanHandPoseObservation.Chirality) -> Bool {
+        let (frontTop, frontMiddle, backTop) = divider
 
+        // Compute the divider's x-position for a given y by clamping to the end points
+        // and linearly interpolating between them.
+        func dividerX(at y: Float) -> Float {
+            if y <= frontTop[1] { return frontTop[0] }
+            if y >= backTop[1] { return backTop[0] }
+            let dx = backTop[0] - frontTop[0]
+            let dy = backTop[1] - frontTop[1]
+            // Avoid division by zero if points are vertically aligned.
+            guard dx > .leastNormalMagnitude else { return frontTop[0] }
+            let m = dy / dx
+            let c = frontTop[1] - m * frontTop[0]
+            return (y - c) / m
+        }
+
+        return keypoints.contains { joint in
+            let x = Float(joint.location.x * CameraSettings.resolution.width)
+            let y = Float(joint.location.y * CameraSettings.resolution.height)
+            switch handedness {
+                case .left:
+                    return x < dividerX(at: y)
+                case .right:
+                    return x > dividerX(at: y)
+                @unknown default:
+                    fatalError("Unknown handedness")
+            }
+        }
+    }
+}
