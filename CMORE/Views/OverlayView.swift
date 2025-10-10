@@ -28,7 +28,7 @@ struct OverlayView: View {
             BoxView(geometry, boxDetection)
         }
         
-        if let hands = overlay.handPoses {
+        if let hands = overlay.hands {
             ForEach(hands.indices, id: \.self) { i in
                 HandView(geometry, hands[i])
             }

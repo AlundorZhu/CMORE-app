@@ -60,16 +60,16 @@ struct VideoStreamView: View {
         }
         .ignoresSafeArea()
         // Save/discard confirmation after recording ends
-        .alert("Save Video?", isPresented: $viewModel.showSaveConfirmation) {
-            Button("Save to Photos") {
-                viewModel.saveVideoToPhotos()
-            }
-            Button("Discard", role: .destructive) {
-                viewModel.discardVideo()
-            }
-        } message: {
-            Text("Would you like to save this recorded video to your Photos library or discard it?")
-        }
+//        .alert("Save Video?", isPresented: $viewModel.showSaveConfirmation) {
+//            Button("Save to Photos") {
+//                viewModel.saveVideoToPhotos()
+//            }
+//            Button("Discard", role: .destructive) {
+//                viewModel.discardVideo()
+//            }
+//        } message: {
+//            Text("Would you like to save this recorded video to your Photos library or discard it?")
+//        }
     }
 }
 

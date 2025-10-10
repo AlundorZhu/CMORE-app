@@ -91,17 +91,20 @@ actor FrameProcessor {
         }
         
         /// The block counting algorithm
+        result.boxDetection = currentBox // for overlay
+        
         async let hands = try? handsRequest.perform(on: ciImage)
         guard let hands = await hands,
               hands.count > 0 else {
             return result
         }
+        result.hands = hands
         
         /// simulate the load by running the block detector after hand is avaliable
-        let blocks = try? await blocksRequest.perform(on: ciImage)
-        if let blocks = blocks {
-            print(blocks)
-        }
+//        let blocks = try? await blocksRequest.perform(on: ciImage)
+//        if let blocks = blocks {
+//            print(blocks)
+//        }
         
         guard let currentBox = currentBox else {
             fatalError("Bad Box!")

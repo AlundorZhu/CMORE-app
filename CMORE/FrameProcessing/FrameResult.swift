@@ -14,5 +14,5 @@ struct FrameResult {
     let processingState: FrameProcessor.State
     var faces: [BoundingBoxProviding]?
     var boxDetection: BoxDetection?
-    var handPoses: [HumanHandPoseObservation]?
+    var hands: [HumanHandPoseObservation]?
 }
