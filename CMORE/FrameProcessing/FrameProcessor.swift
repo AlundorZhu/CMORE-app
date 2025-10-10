@@ -17,6 +17,8 @@ import UIKit
 /// Processes frames for face detection and can return frames with bounding boxes drawn
 actor FrameProcessor {
     
+    nonisolated let onCrossed: (() -> Void)
+    
     enum State {
         case free
         case detecting
@@ -44,7 +46,7 @@ actor FrameProcessor {
     
     // MARK: - Public Methods
     
-    init() {
+    init(onCross: @escaping () -> Void) {
         
         /// Craft the boxDetection request
         let keypointModelContainer = BoxDetector.createBoxDetector()
@@ -56,6 +58,9 @@ actor FrameProcessor {
         let blockModelContainer = BlockDetector.createBlockDetector()
         /// Default resize action is scaleToFill
         self.blocksRequest = CoreMLRequest(model: blockModelContainer)
+        
+        /// When crossing the bivider
+        self.onCrossed = onCross
     }
     
     func startCountingBlocks() {
@@ -170,6 +175,10 @@ actor FrameProcessor {
         } else if oldState == .detecting && !isAbove(of: max(box["Back top left"][1], box["Back top right"][1]), fingerTips) {
             return .free
         } else if oldState == .detecting && crossed(divider:(box["Front divider top"], box["Front top middle"], box["Back divider top"]), fingerTips, handedness: hand.chirality!) {
+            // play a sound
+            Task { @MainActor in
+                self.onCrossed()
+            }
             return .crossed
         } else if oldState == .crossed && !crossed(divider:(box["Front divider top"], box["Front top middle"], box["Back divider top"]), fingerTips, handedness: hand.chirality!) && !isAbove(of: max(box["Back top left"][1], box["Back top right"][1]), fingerTips) {
             return .free

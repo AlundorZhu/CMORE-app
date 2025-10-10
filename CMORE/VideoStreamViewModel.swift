@@ -7,6 +7,7 @@
 import SwiftUI
 import AVFoundation
 import UIKit
+import AudioToolbox
 import UniformTypeIdentifiers
 
 // MARK: - VideoStreamViewModel
@@ -50,8 +51,10 @@ class VideoStreamViewModel: NSObject, ObservableObject {
     /// Background queue for processing video frames (keeps UI responsive)
     private let videoOutputQueue = DispatchQueue(label: "videoOutputQueue", qos: .userInitiated)
     
-    /// Processes each frame for face detection
-    private let frameProcessor = FrameProcessor()
+    /// Processes each frame through it
+    private let frameProcessor = FrameProcessor(onCross: {
+        AudioServicesPlaySystemSound(1054)
+    })
     
     // MARK: - Initialization
     
