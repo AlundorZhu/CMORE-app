@@ -136,9 +136,9 @@ class VideoStreamViewModel: NSObject, ObservableObject {
             format.formatDescription.dimensions.height == 1080
         }
         
-        let hasDepthDataSupport: (AVCaptureDevice.Format) -> Bool = { format in
-            !format.supportedDepthDataFormats.isEmpty
-        }
+//        let hasDepthDataSupport: (AVCaptureDevice.Format) -> Bool = { format in
+//            !format.supportedDepthDataFormats.isEmpty
+//        }
         
         let supportsFrameRate: (AVCaptureDevice.Format) -> Bool = { format in
             format.videoSupportedFrameRateRanges.contains { (range: AVFrameRateRange) in
@@ -149,7 +149,7 @@ class VideoStreamViewModel: NSObject, ObservableObject {
         // Combine the conditions
         guard let targetFormat = (allFormats.last { format in
             hasCorrectResolution(format) &&
-            hasDepthDataSupport(format) &&
+//            hasDepthDataSupport(format) &&
             supportsFrameRate(format)
         }) else {
             fatalError("No supported format")
@@ -162,7 +162,7 @@ class VideoStreamViewModel: NSObject, ObservableObject {
     /// Camera starts automatically, no separate streaming control needed
     private func setupCamera() {
         // Get the default LiDAR depth camera (back camera)
-        guard let camera = AVCaptureDevice.default(.builtInLiDARDepthCamera, for: .video, position: .back) else {
+        guard let camera = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back) else {
             print("Failed to get camera with LiDAR device")
             return
         }
