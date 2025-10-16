@@ -200,4 +200,11 @@ struct BoxDetection {
         let idx = keypointNames.firstIndex(of: name)!
         return keypoints[idx]
     }
+    
+    func normalizedKeypoint(for name: String) -> NormalizedPoint{
+        return NormalizedPoint(
+            x: CGFloat(self[name][0]) / CameraSettings.resolution.width,
+            y: CGFloat(self[name][1]) / CameraSettings.resolution.height
+        )
+    }
 }

@@ -42,7 +42,9 @@ actor FrameProcessor {
     // MARK: - Private Properties
     private var currentBox: BoxDetection?
     
-    private var currentState:State = .free
+    private var currentState: State = .free
+    
+    private var normalizedScalePerCM: Float?
     
     // MARK: - Public Methods
     
@@ -106,6 +108,9 @@ actor FrameProcessor {
         }
         result.hands = hands
         
+        let blockROI = hands.first!.boundingBox
+        
+        
         /// simulate the load by running the block detector after hand is avaliable
 //        let blocks = try? await blocksRequest.perform(on: ciImage)
 //        if let blocks = blocks {
@@ -115,6 +120,8 @@ actor FrameProcessor {
         guard let currentBox = currentBox else {
             fatalError("Bad Box!")
         }
+        
+        normalizedScalePerCM = calculateScaleToCM(currentBox)
         
         currentState = transition(from: currentState, hand: hands.first!, box: currentBox)
         
@@ -228,6 +235,19 @@ actor FrameProcessor {
                 @unknown default:
                     fatalError("Unknown handedness")
             }
+        }
+    }
+    
+    private func calculateScaleToCM(_ box: BoxDetection) -> Double {
+        let dividerHeight = 10.0
+        let keypointHeight = box.normalizedKeypoint(for: "Front divider top").y - box.normalizedKeypoint(for: "Front top middle").y
+        
+        return dividerHeight / keypointHeight
+    }
+    
+    extension HumanObservation {
+        var blockROI: CGRect {
+            
         }
     }
 }
