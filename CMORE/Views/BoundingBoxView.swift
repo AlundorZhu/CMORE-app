@@ -31,3 +31,7 @@ struct BoundingBoxView: View {
             )
     }
 }
+
+extension NormalizedRect: @retroactive BoundingBoxProviding {
+    public var boundingBox: NormalizedRect { self }
+}

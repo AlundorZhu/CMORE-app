@@ -108,9 +108,6 @@ actor FrameProcessor {
         }
         result.hands = hands
         
-        let blockROI = hands.first!.boundingBox
-        
-        
         /// simulate the load by running the block detector after hand is avaliable
 //        let blocks = try? await blocksRequest.perform(on: ciImage)
 //        if let blocks = blocks {
@@ -121,7 +118,12 @@ actor FrameProcessor {
             fatalError("Bad Box!")
         }
         
-        normalizedScalePerCM = calculateScaleToCM(currentBox)
+        if normalizedScalePerCM == nil {
+            normalizedScalePerCM = calculateScaleToCM(currentBox)
+        }
+        
+        let blockROI = defineBlockROI(hand: hands.first!, cmPerScale: normalizedScalePerCM!)
+        result.blockROI = blockROI
         
         currentState = transition(from: currentState, hand: hands.first!, box: currentBox)
         
@@ -238,16 +240,33 @@ actor FrameProcessor {
         }
     }
     
-    private func calculateScaleToCM(_ box: BoxDetection) -> Double {
-        let dividerHeight = 10.0
-        let keypointHeight = box.normalizedKeypoint(for: "Front divider top").y - box.normalizedKeypoint(for: "Front top middle").y
+    private func calculateScaleToCM(_ box: BoxDetection) -> Float {
+        let dividerHeight: Float = 10.0
+        let keypointHeight = Float(box.normalizedKeypoint(for: "Front divider top").y - box.normalizedKeypoint(for: "Front top middle").y)
         
         return dividerHeight / keypointHeight
     }
     
-    extension HumanObservation {
-        var blockROI: CGRect {
-            
+    func defineBlockROI(hand: HumanHandPoseObservation, cmPerScale: Float) -> NormalizedRect {
+        let handBox = hand.boundingBox
+        let blockSize = CGFloat(2.5 / cmPerScale)
+        
+        if hand.chirality == .left {
+            return NormalizedRect(
+                x: handBox.origin.x - 2 * blockSize,
+                y: handBox.origin.y - 2 * blockSize,
+                width: handBox.width + blockSize * 2,
+                height: handBox.height + blockSize * 2
+            )
+        } else if hand.chirality == .right {
+            return NormalizedRect(
+                x: handBox.origin.x + 2 * blockSize,
+                y: handBox.origin.y - 2 * blockSize,
+                width: handBox.width + blockSize * 2,
+                height: handBox.height + blockSize * 2
+            )
+        } else {
+            fatalError("Something went wrong with calculating blockROI")
         }
     }
 }

@@ -33,6 +33,10 @@ struct OverlayView: View {
                 HandView(geometry, hands[i])
             }
         }
+        
+        if let blockROI = overlay.blockROI {
+            BoundingBoxView(geometry, blockROI)
+        }
     }
 }
 

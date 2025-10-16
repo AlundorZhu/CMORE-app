@@ -15,6 +15,7 @@ struct FrameResult {
     var faces: [BoundingBoxProviding]?
     var boxDetection: BoxDetection?
     var hands: [HumanHandPoseObservation]?
+    var blockROI: NormalizedRect?
 }
 
 extension HumanHandPoseObservation : @retroactive BoundingBoxProviding {
@@ -24,12 +25,14 @@ extension HumanHandPoseObservation : @retroactive BoundingBoxProviding {
         
         let maxX = Xs.max()!
         let minX = Xs.min()!
+        let maxY = Ys.max()!
+        let minY = Ys.min()!
         
         return NormalizedRect(
             x: CGFloat(minX),
-            y: CGFloat(minX),
+            y: CGFloat(minY),
             width: CGFloat(maxX - minX),
-            height: CGFloat(maxX - minX)
+            height: CGFloat(maxY - minY)
         )
     }
 }
