@@ -16,6 +16,7 @@ struct FrameResult {
     var boxDetection: BoxDetection?
     var hands: [HumanHandPoseObservation]?
     var blockROI: NormalizedRect?
+    var blocks: [RecognizedObjectObservation]?
 }
 
 extension HumanHandPoseObservation : @retroactive BoundingBoxProviding {

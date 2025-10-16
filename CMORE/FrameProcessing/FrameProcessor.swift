@@ -35,7 +35,7 @@ actor FrameProcessor {
     
     private let handsRequest = DetectHumanHandPoseRequest()
     
-    private let blocksRequest: CoreMLRequest
+    private var blocksRequest: CoreMLRequest /// var because the region of interest changes
     
     private let boxRequest: CoreMLRequest
     
@@ -108,12 +108,6 @@ actor FrameProcessor {
         }
         result.hands = hands
         
-        /// simulate the load by running the block detector after hand is avaliable
-//        let blocks = try? await blocksRequest.perform(on: ciImage)
-//        if let blocks = blocks {
-//            print(blocks)
-//        }
-        
         guard let currentBox = currentBox else {
             fatalError("Bad Box!")
         }
@@ -124,6 +118,13 @@ actor FrameProcessor {
         
         let blockROI = defineBlockROI(hand: hands.first!, cmPerScale: normalizedScalePerCM!)
         result.blockROI = blockROI
+        
+        blocksRequest.regionOfInterest = blockROI
+        
+        let blocks = try? await blocksRequest.perform(on: ciImage)
+        if let blocks = blocks as? [RecognizedObjectObservation], !blocks.isEmpty {
+            result.blocks = blocks
+        }
         
         currentState = transition(from: currentState, hand: hands.first!, box: currentBox)
         
@@ -270,3 +271,5 @@ actor FrameProcessor {
         }
     }
 }
+
+
