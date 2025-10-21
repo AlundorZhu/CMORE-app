@@ -19,7 +19,7 @@ struct VideoStreamView: View {
 
     // The target stream aspect ratio (e.g., 1920x1080 = 16:9)
     private var streamAspect: CGFloat {
-        CGFloat(CameraSettings.resolution.width) / CGFloat(CameraSettings.resolution.height)
+        CameraSettings.resolution.width / CameraSettings.resolution.height
     }
 
     var body: some View {
