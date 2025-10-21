@@ -80,7 +80,7 @@ actor FrameProcessor {
         var result = FrameResult(processingState: currentState)
         async let faces = try? facesRequest.perform(on: ciImage)
         
-        /// Before the algorithm starts, locate the box
+        // MARK: - Before the algorithm starts, locate the box
         if !countingBlocks {
             async let box = try? boxRequest.perform(on: ciImage)
             
@@ -98,19 +98,21 @@ actor FrameProcessor {
             return result
         }
         
-        /// The block counting algorithm
-        result.boxDetection = currentBox // for overlay
+        // MARK: - The block counting algorithm
+        guard let currentBox = currentBox else {
+            fatalError("Bad Box!")
+        }
+        result.boxDetection = currentBox
         
         async let hands = try? handsRequest.perform(on: ciImage)
         guard let hands = await hands,
               hands.count > 0 else {
+            
+            result.faces = await faces
             return result
         }
         result.hands = hands
         
-        guard let currentBox = currentBox else {
-            fatalError("Bad Box!")
-        }
         
         if normalizedScalePerCM == nil {
             normalizedScalePerCM = calculateScaleToCM(currentBox)
@@ -160,7 +162,7 @@ actor FrameProcessor {
 //            print("\(currentState)")
 //        }
         
-        // TODO remove it
+        result.faces = await faces
         return result
     }
     
