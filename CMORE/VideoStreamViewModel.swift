@@ -48,6 +48,9 @@ class VideoStreamViewModel: NSObject, ObservableObject {
     /// Maximum of frames allowed to buffer before droping frames
     private let maxFrameBehind: Int = 6
     
+    /// Tracks the current frame number
+    private var frameNum: UInt = 0
+    
     /// Background queue for processing video frames (keeps UI responsive)
     private let videoOutputQueue = DispatchQueue(label: "videoOutputQueue", qos: .userInitiated)
     
@@ -313,7 +316,7 @@ extension VideoStreamViewModel: AVCaptureVideoDataOutputSampleBufferDelegate {
         
         // Avoid pile up on frames
         guard numFrameBehind < maxFrameBehind else {
-            print("Frame skipped!")
+            print("Skipped! Frame: \(frameNum)")
             return
         }
         
@@ -334,6 +337,11 @@ extension VideoStreamViewModel: AVCaptureVideoDataOutputSampleBufferDelegate {
             }
             
             numFrameBehind -= 1
+            
+            print("Finished processing frame: \(frameNum)")
+            print(String(repeating: "-", count: 50))
+            
+            frameNum += 1
             
             
             // If recording, add this frame to the video writer
