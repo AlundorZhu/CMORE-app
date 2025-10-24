@@ -130,7 +130,7 @@ actor FrameProcessor {
         
         currentState = transition(from: currentState, hand: hands.first!, box: currentBox)
         
-        print("\(currentState)")
+//        print("\(currentState)")
         
 //        switch currentState {
 //        case .free:
@@ -263,7 +263,7 @@ actor FrameProcessor {
             )
         } else if hand.chirality == .right {
             return NormalizedRect(
-                x: handBox.origin.x + 2 * blockSize,
+                x: handBox.origin.x,
                 y: handBox.origin.y - 2 * blockSize,
                 width: handBox.width + blockSize * 2,
                 height: handBox.height + blockSize * 2
