@@ -62,6 +62,9 @@ class VideoStreamViewModel: NSObject, ObservableObject {
     /// For fps calculation
     private var lastTimestamp: CMTime?
     
+    /// For recording
+//    private var framesToRecord: [CMTime: CVPixelBuffer] = [:]
+    
     // MARK: - Initialization
     
     override init() {
@@ -348,15 +351,10 @@ extension VideoStreamViewModel: AVCaptureVideoDataOutputSampleBufferDelegate {
         // Extract the pixel buffer from the sample buffer
         guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
         
-        // Convert to CIImage for processing
-        let ciImage = CIImage(cvPixelBuffer: pixelBuffer)
-        
-        
-        
         // Process the frame for face detection (runs on background thread)
         Task {
 //            print("Start processing frame: \(frameNum)")
-            let processedResult = await frameProcessor.processFrame(ciImage)
+            let processedResult = await frameProcessor.processFrame(pixelBuffer)
             
             await MainActor.run {
                 self.overlay = processedResult
@@ -364,10 +362,10 @@ extension VideoStreamViewModel: AVCaptureVideoDataOutputSampleBufferDelegate {
             
             numFrameBehind -= 1
             
-            // If recording, add this frame to the video writer
-//            if isRecording,
-//               let videoWriter = videoWriter {
-//                videoWriter.appendFrame(processedFrame)
+            // If recording, add this frame to the jobs dictionary
+//            if isRecording {
+//                let presentationTimestamp = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
+//                framesToRecord[presentationTimestamp] = pixelBuffer
 //            }
         }
     }

@@ -75,9 +75,11 @@ actor FrameProcessor {
     
     /// Processes a single frame from the camera or video
     /// - Parameter ciImage: The frame to process as a Core Image
-    func processFrame(_ ciImage: CIImage) async -> FrameResult {
+    func processFrame(_ pixelBuffer: CVPixelBuffer) async -> FrameResult {
         
         var result = FrameResult(processingState: currentState)
+        
+        let ciImage = CIImage(cvPixelBuffer: pixelBuffer)
         async let faces = try? facesRequest.perform(on: ciImage)
         
         // MARK: - Before the algorithm starts, locate the box
