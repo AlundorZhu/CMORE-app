@@ -183,7 +183,7 @@ class VideoStreamViewModel: NSObject, ObservableObject {
             /// Set the max exposure duration to allow faster shutter speeds (not possible)
 //            camera.activeFormat.maxExposureDuration = CameraSettings.maxExposureDuration
             /// Set the minimum frame duration to control frame rate
-            camera.activeVideoMinFrameDuration = CMTime(value: 1, timescale: Int32(CameraSettings.frameRate))
+//            camera.activeVideoMinFrameDuration = CMTime(value: 1, timescale: Int32(CameraSettings.frameRate))
             camera.activeVideoMaxFrameDuration = CMTime(value: 1, timescale: Int32(CameraSettings.frameRate))
 //            camera.setExposureModeCustom(duration: CameraSettings.maxExposureDuration, iso: AVCaptureDevice.currentISO)
 
@@ -325,6 +325,8 @@ extension VideoStreamViewModel: AVCaptureVideoDataOutputSampleBufferDelegate {
         
         let currentTime = sampleBuffer.presentationTimeStamp
         frameNum += 1
+        
+        print(String(repeating: "-", count: 50))
         
         if let last = lastTimestamp {
             let delta = CMTimeGetSeconds(currentTime - last)
