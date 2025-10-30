@@ -10,11 +10,7 @@ import CoreGraphics
 
 struct CameraSettings {
     static let resolution: CGSize = CGSize(width: 1920, height: 1080)
-//     static var frameRate: CMTime = CMTime(value: 1, timescale: 60)
-    static let frameRate = 240.0
-    static let minFrameDuration: CMTime = CMTime(value: 1, timescale: 240) // min 30 fps
-    // static var fps : Double = 30
-    static let maxExposureDuration: CMTime = CMTime(value: 1, timescale: 240) // 1/240 second
+    static let frameRate = 60.0
     
     // Video encoding settings
     static let videoCodec: AVVideoCodecType = .h264

@@ -46,7 +46,7 @@ class VideoStreamViewModel: NSObject, ObservableObject {
     private var numFrameBehind: Int = 0
     
     /// Maximum of frames allowed to buffer before droping frames
-    private let maxFrameBehind: Int = 6
+    private let maxFrameBehind: Int = 12
     
     /// Tracks the current frame number
     private var frameNum: UInt = 0
@@ -58,6 +58,9 @@ class VideoStreamViewModel: NSObject, ObservableObject {
     private let frameProcessor = FrameProcessor(onCross: {
         AudioServicesPlaySystemSound(1054)
     })
+    
+    /// For fps calculation
+    private var lastTimestamp: CMTime?
     
     // MARK: - Initialization
     
@@ -150,7 +153,7 @@ class VideoStreamViewModel: NSObject, ObservableObject {
         }
         
         // Combine the conditions
-        guard let targetFormat = (allFormats.last { format in
+        guard let targetFormat = (allFormats.first { format in
             hasCorrectResolution(format) &&
 //            hasDepthDataSupport(format) &&
             supportsFrameRate(format)
@@ -178,13 +181,18 @@ class VideoStreamViewModel: NSObject, ObservableObject {
 
             camera.activeFormat = format
             /// Set the max exposure duration to allow faster shutter speeds (not possible)
-            // camera.activeFormat.maxExposureDuration = CameraSettings.maxExposureDuration
+//            camera.activeFormat.maxExposureDuration = CameraSettings.maxExposureDuration
             /// Set the minimum frame duration to control frame rate
-            camera.activeVideoMinFrameDuration = CameraSettings.minFrameDuration
+            camera.activeVideoMinFrameDuration = CMTime(value: 1, timescale: Int32(CameraSettings.frameRate))
+            camera.activeVideoMaxFrameDuration = CMTime(value: 1, timescale: Int32(CameraSettings.frameRate))
+//            camera.setExposureModeCustom(duration: CameraSettings.maxExposureDuration, iso: AVCaptureDevice.currentISO)
 
             camera.unlockForConfiguration()
             
             print("Selected video format: \(camera.activeFormat)")
+            
+            print("Min frame duration: \(camera.activeVideoMinFrameDuration)")
+            print("Max frame duration: \(camera.activeVideoMaxFrameDuration)")
             
             // print the actual shutter speed and frame rate
             let shutterSpeed = camera.exposureDuration.seconds
@@ -197,6 +205,7 @@ class VideoStreamViewModel: NSObject, ObservableObject {
             
             // Create and configure the capture session
             captureSession = AVCaptureSession()
+            captureSession?.sessionPreset = .inputPriority
             
             // Create input from the camera
             let cameraInput = try AVCaptureDeviceInput(device: camera)
@@ -314,12 +323,24 @@ extension VideoStreamViewModel: AVCaptureVideoDataOutputSampleBufferDelegate {
     ///   - connection: The connection information
     func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
         
+        let currentTime = sampleBuffer.presentationTimeStamp
+        frameNum += 1
+        
+        if let last = lastTimestamp {
+            let delta = CMTimeGetSeconds(currentTime - last)
+            let actualFPS = 1.0 / delta
+            print("Actual FPS: \(actualFPS)")
+        }
+        
+        lastTimestamp = currentTime
+        
         // Avoid pile up on frames
         guard numFrameBehind < maxFrameBehind else {
             print("Skipped! Frame: \(frameNum)")
             return
         }
         
+        print("Processing Frame: \(frameNum)")
         numFrameBehind += 1
         
         // Extract the pixel buffer from the sample buffer
@@ -328,8 +349,11 @@ extension VideoStreamViewModel: AVCaptureVideoDataOutputSampleBufferDelegate {
         // Convert to CIImage for processing
         let ciImage = CIImage(cvPixelBuffer: pixelBuffer)
         
+        
+        
         // Process the frame for face detection (runs on background thread)
         Task {
+//            print("Start processing frame: \(frameNum)")
             let processedResult = await frameProcessor.processFrame(ciImage)
             
             await MainActor.run {
@@ -338,18 +362,17 @@ extension VideoStreamViewModel: AVCaptureVideoDataOutputSampleBufferDelegate {
             
             numFrameBehind -= 1
             
-            print("Finished processing frame: \(frameNum)")
-            print(String(repeating: "-", count: 50))
-            
-            frameNum += 1
-            
-            
             // If recording, add this frame to the video writer
 //            if isRecording,
 //               let videoWriter = videoWriter {
 //                videoWriter.appendFrame(processedFrame)
 //            }
         }
+    }
+    
+    func captureOutput(_ output: AVCaptureOutput, didDrop sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
+        frameNum += 1
+        print("Avfundation Dropped frame: \(frameNum) automatically!")
     }
 }
 

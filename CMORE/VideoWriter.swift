@@ -84,7 +84,7 @@ actor VideoWriter {
         }
         
         // Calculate time for this frame
-        let frameTime = CMTime(value: frameCount, timescale: CameraSettings.minFrameDuration.timescale)
+        let frameTime = CMTime(value: frameCount, timescale: Int32(CameraSettings.frameRate))
         
         // Append it
         pixelBufferAdaptor.append(pixelBuffer, withPresentationTime: frameTime)
