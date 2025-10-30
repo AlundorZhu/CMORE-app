@@ -10,7 +10,7 @@ import CoreGraphics
 
 struct CameraSettings {
     static let resolution: CGSize = CGSize(width: 1920, height: 1080)
-    static let frameRate = 60.0
+    static let frameRate = 120.0
     
     // Video encoding settings
     static let videoCodec: AVVideoCodecType = .h264
