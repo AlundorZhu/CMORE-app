@@ -75,7 +75,7 @@ actor FrameProcessor {
     
     /// Processes a single frame from the camera or video
     /// - Parameter ciImage: The frame to process as a Core Image
-    func processFrame(_ pixelBuffer: CVPixelBuffer) async -> FrameResult {
+    func processFrame(_ pixelBuffer: CVImageBuffer) async -> FrameResult {
         
         var result = FrameResult(processingState: currentState)
         

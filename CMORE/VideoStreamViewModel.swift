@@ -4,9 +4,11 @@
 //
 //  Created by ZIQIANG ZHU on 8/19/25.
 //
-import SwiftUI
-import AVFoundation
+
 import UIKit
+import SwiftUI
+import Collections
+import AVFoundation
 import AudioToolbox
 import UniformTypeIdentifiers
 
@@ -25,7 +27,7 @@ class VideoStreamViewModel: NSObject, ObservableObject {
 //    @Published var recordingStatusMessage: String?
     
     /// Whether to show the save confirmation dialog
-//    @Published var showSaveConfirmation = false
+    @Published var showSaveConfirmation = false
     
     /// Show the visualization overlay in real-time
     @Published var overlay: FrameResult?
@@ -34,13 +36,13 @@ class VideoStreamViewModel: NSObject, ObservableObject {
     public private(set) var captureSession: AVCaptureSession?
     
     /// The URL of the current video being processed (temporary)
-//    private var currentVideoURL: URL?
+    private var currentVideoURL: URL?
     
     /// Handles video data output from the camera
     private var videoOutput: AVCaptureVideoDataOutput?
     
     /// Custom video writer for recording processed frames with face detection
-//    private var videoWriter: VideoWriter?
+    private var videoWriter: VideoWriter?
     
     /// Number of frames currently waiting to get processed
     private var numFrameBehind: Int = 0
@@ -63,7 +65,25 @@ class VideoStreamViewModel: NSObject, ObservableObject {
     private var lastTimestamp: CMTime?
     
     /// For recording
-//    private var framesToRecord: [CMTime: CVPixelBuffer] = [:]
+    private var packetBuffer: Heap<FramePacket> = []
+    
+    private struct FramePacket: Comparable {
+        let time: CMTime
+        let pixelBuffer: CVImageBuffer
+        let overlay: FrameResult
+        
+        static func < (lhs: FramePacket, rhs: FramePacket) -> Bool {
+            return lhs.time < rhs.time
+        }
+        
+        static func == (lhs: FramePacket, rhs: FramePacket) -> Bool {
+            return lhs.time == rhs.time
+        }
+    }
+    
+    private var frameStream: AsyncStream<FramePacket>?
+    private var frameContinuation: AsyncStream<FramePacket>.Continuation?
+    private var writerTask: Task<Void, Never>?
     
     // MARK: - Initialization
     
@@ -90,31 +110,27 @@ class VideoStreamViewModel: NSObject, ObservableObject {
     }
     
     /// Saves the pending video to Photos library (called when user confirms)
-//    func saveVideoToPhotos() {
-//        guard let videoURL = currentVideoURL else { return }
-//        saveVideoToPhotosLibrary(videoURL)
-//        currentVideoURL = nil
-//        showSaveConfirmation = false
-//    }
+    func saveVideoToPhotos() {
+        guard let videoURL = currentVideoURL else { return }
+        saveVideoToPhotosLibrary(videoURL)
+        currentVideoURL = nil
+        showSaveConfirmation = false
+    }
     
     /// Discards the pending video (called when user declines)
-//    func discardVideo() {
-//        guard let videoURL = currentVideoURL else { return }
-//        
-//        // Delete the temporary file
-//        try? FileManager.default.removeItem(at: videoURL)
-//        
-//        // Update UI
-//        Task { @MainActor in
-//            self.recordingStatusMessage = "Video discarded"
-//            self.currentVideoURL = nil
-//            self.showSaveConfirmation = false
-//            
-//            // Clear message after a delay
-//            try? await Task.sleep(for: .seconds(2))
-//            self.recordingStatusMessage = nil
-//        }
-//    }
+    func discardVideo() {
+        guard let videoURL = currentVideoURL else { return }
+        
+        // Delete the temporary file
+        try? FileManager.default.removeItem(at: videoURL)
+        
+        // Update UI
+        Task { @MainActor in
+            print("Video discarded")
+            self.currentVideoURL = nil
+            self.showSaveConfirmation = false
+        }
+    }
     
     /// Starts the camera feed
     func startCamera() async {
@@ -229,7 +245,7 @@ class VideoStreamViewModel: NSObject, ObservableObject {
             }
             
             // Initialize video writer with camera settings
-//            videoWriter = VideoWriter()
+            videoWriter = VideoWriter()
             
         } catch {
             print("Error setting up camera: \(error)")
@@ -246,46 +262,59 @@ class VideoStreamViewModel: NSObject, ObservableObject {
     
     /// Starts video recording to a file
     private func startRecording() {
-//        guard let videoWriter = videoWriter else {
-//            print("Video writer not available")
-//            return
-//        }
+        guard let videoWriter = videoWriter else {
+            print("Video writer not available")
+            return
+        }
 
         // Don't start recording if already recording
         guard !isRecording else { return }
         
         isRecording = true
             
-//        // Create a unique filename for the recorded video
-//        let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
-//        let videoFileName = "CMORE_Recording_\(Date().timeIntervalSince1970).mov"
-//        let outputURL = documentsPath.appendingPathComponent(videoFileName)
+        // Create a unique filename for the recorded video
+        let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
+        let videoFileName = "CMORE_Recording_\(Date().timeIntervalSince1970).mov"
+        let outputURL = documentsPath.appendingPathComponent(videoFileName)
+        
+        // Create a channel (AsyncStream) for frames
+        frameStream = AsyncStream<FramePacket> { continuation in
+            self.frameContinuation = continuation
+        }
         
         // Start recording with the video writer
         Task{
             
-//            ensure the recording started successfully.
-//            if await videoWriter.startRecording(to: outputURL) {
-//                
-//                // Start the block counting algorithm
+            // ensure the recording started successfully.
+            if await videoWriter.startRecording(to: outputURL) {
+                
+                // Start the block counting algorithm
                 await frameProcessor.startCountingBlocks()
-//                
-//                // Update UI
-//                await MainActor.run {
-//                    self.recordingStatusMessage = "Recording started with face detection..."
-//                    self.currentVideoURL = outputURL
-//                }
-//            } else {
-//                await MainActor.run {
-//                    self.recordingStatusMessage = "Failed to start recording"
-//                }
-//            }
+                
+                // Launch the writer task that consumes the stream
+                writerTask = Task.detached { [weak self] in
+                    guard let self, let stream = self.frameStream else { return }
+                    for await packet in stream {
+                        await self.videoWriter?.append(packet.pixelBuffer, overlay: packet.overlay, at: packet.time)
+                    }
+                }
+                
+                // Update UI
+                await MainActor.run {
+                    print("Recording started")
+                    self.currentVideoURL = outputURL
+                }
+            } else {
+                await MainActor.run {
+                    print("Failed to start recording")
+                }
+            }
         }
     }
     
     /// Stops video recording
     private func stopRecording() {
-//        guard let videoWriter = videoWriter else { return }
+        guard let videoWriter = videoWriter else { return }
         
         /// Recording has to be started
         guard isRecording else { return }
@@ -296,22 +325,34 @@ class VideoStreamViewModel: NSObject, ObservableObject {
             
             await frameProcessor.stopCountingBlocks()
             
-//            let result = await videoWriter.stopRecording()
-//            
-//            await MainActor.run {
-//                self.isRecording = false
-//                
-//                if let error = result.error {
-//                    self.recordingStatusMessage = "Recording failed: \(error.localizedDescription)"
-//                    print("Recording error: \(error)")
-//                } else if result.success {
-//                    // Successfully recorded - ask user to save or discard
-//                    self.recordingStatusMessage = "Recording completed with face detection! Save or discard?"
-//                    self.showSaveConfirmation = true
-//                } else {
-//                    self.recordingStatusMessage = "Recording failed: Unknown error"
-//                }
-//            }
+            // Push the rest of packet to the stream
+            while !packetBuffer.isEmpty {
+                frameContinuation?.yield(packetBuffer.popMin()!)
+            }
+            
+            // Finish the stream so the writer loop can exit
+            frameContinuation?.finish()
+            frameContinuation = nil
+
+            // Wait for the writer to finish draining and exit
+            await writerTask?.value
+            writerTask = nil
+            
+            let result = await videoWriter.stopRecording()
+            
+            await MainActor.run {
+                self.isRecording = false
+                
+                if let error = result.error {
+                    print("Recording error: \(error)")
+                } else if result.success {
+                    // Successfully recorded - ask user to save or discard
+                    print("Recording completed with face detection! Save or discard?")
+                    self.showSaveConfirmation = true
+                } else {
+                    print("Recording failed: Unknown error")
+                }
+            }
         }
     }
 }
@@ -353,7 +394,6 @@ extension VideoStreamViewModel: AVCaptureVideoDataOutputSampleBufferDelegate {
         
         // Process the frame for face detection (runs on background thread)
         Task {
-//            print("Start processing frame: \(frameNum)")
             let processedResult = await frameProcessor.processFrame(pixelBuffer)
             
             await MainActor.run {
@@ -363,10 +403,12 @@ extension VideoStreamViewModel: AVCaptureVideoDataOutputSampleBufferDelegate {
             numFrameBehind -= 1
             
             // If recording, add this frame to the jobs dictionary
-//            if isRecording {
-//                let presentationTimestamp = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
-//                framesToRecord[presentationTimestamp] = pixelBuffer
-//            }
+            if isRecording {
+                let packet = FramePacket(time: currentTime, pixelBuffer: pixelBuffer, overlay: processedResult)
+                packetBuffer.insert(packet)
+                
+                frameContinuation?.yield(packetBuffer.popMin()!)
+            }
         }
     }
     
@@ -377,43 +419,37 @@ extension VideoStreamViewModel: AVCaptureVideoDataOutputSampleBufferDelegate {
 }
 
 // MARK: - Video Saving Methods
-//extension VideoStreamViewModel {
-//    /// Saves the recorded video to the Photos library
-//    /// - Parameter videoURL: The URL of the recorded video file
-//    private func saveVideoToPhotosLibrary(_ videoURL: URL) {
-//        // Check if the file exists
-//        guard FileManager.default.fileExists(atPath: videoURL.path) else {
-//            recordingStatusMessage = "Error: Video file not found"
-//            return
-//        }
-//        
-//        // Save to Photos library
-//        UISaveVideoAtPathToSavedPhotosAlbum(videoURL.path, self, #selector(video(_:didFinishSavingWithError:contextInfo:)), nil)
-//    }
-//    
-//    /// Callback for Photos library save operation
-//    /// - Parameters:
-//    ///   - videoPath: Path to the video file
-//    ///   - error: Any error that occurred during saving
-//    ///   - contextInfo: Additional context (unused)
-//    @objc private func video(_ videoPath: String, didFinishSavingWithError error: Error?, contextInfo: UnsafeRawPointer) {
-//        Task { @MainActor in
-//            if let error = error {
-//                self.recordingStatusMessage = "Failed to save video: \(error.localizedDescription)"
-//            } else {
-//                self.recordingStatusMessage = "Video saved to Photos!"
-//                
-//                // Clean up the temporary file after successful save
-//                let url = URL(fileURLWithPath: videoPath)
-//                try? FileManager.default.removeItem(at: url)
-//                
-//                // Clear message after a delay
-//                try? await Task.sleep(for: .seconds(2))
-//                self.recordingStatusMessage = nil
-//            }
-//        }
-//    }
-//}
-
-
+extension VideoStreamViewModel {
+    /// Saves the recorded video to the Photos library
+    /// - Parameter videoURL: The URL of the recorded video file
+    private func saveVideoToPhotosLibrary(_ videoURL: URL) {
+        // Check if the file exists
+        guard FileManager.default.fileExists(atPath: videoURL.path) else {
+            print("Error: Video file not found")
+            return
+        }
+        
+        // Save to Photos library
+        UISaveVideoAtPathToSavedPhotosAlbum(videoURL.path, self, #selector(video(_:didFinishSavingWithError:contextInfo:)), nil)
+    }
+    
+    /// Callback for Photos library save operation
+    /// - Parameters:
+    ///   - videoPath: Path to the video file
+    ///   - error: Any error that occurred during saving
+    ///   - contextInfo: Additional context (unused)
+    @objc private func video(_ videoPath: String, didFinishSavingWithError error: Error?, contextInfo: UnsafeRawPointer) {
+        Task { @MainActor in
+            if let error = error {
+                print("Error: Failed to save video: \(error.localizedDescription)")
+            } else {
+                print("Video saved to Photos!")
+                
+                // Clean up the temporary file after successful save
+                let url = URL(fileURLWithPath: videoPath)
+                try? FileManager.default.removeItem(at: url)
+            }
+        }
+    }
+}
 

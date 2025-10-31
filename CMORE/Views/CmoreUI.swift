@@ -25,6 +25,15 @@ struct CmoreUI: View {
             .frame(width: 68)
             .padding(.trailing, 5)
             
+        }.alert("Save video?", isPresented: $viewModel.showSaveConfirmation) {
+            Button("Save to Photots") {
+                viewModel.saveVideoToPhotos()
+            }
+            Button("Discard", role: .destructive) {
+                viewModel.discardVideo()
+            }
+        } message: {
+            Text("Would you like to save this recorded video to your Photos library or discard it?")
         }
     }
 }

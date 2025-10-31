@@ -11,7 +11,6 @@ import Vision
 import UIKit
 
 // MARK: - Simple Video Writer
-/// Dead simple video writer - just feed it UIImages
 actor VideoWriter {
     
     // MARK: - Properties
@@ -20,12 +19,10 @@ actor VideoWriter {
     private var pixelBufferAdaptor: AVAssetWriterInputPixelBufferAdaptor?
     private var isRecording = false
     private var frameCount: Int64 = 0
+    private var startTime: CMTime?
     
     // MARK: - Public Methods
-    
-    /// Start recording - simple setup
     func startRecording(to outputURL: URL) -> Bool {
-        // Clean slate
         try? FileManager.default.removeItem(at: outputURL)
         
         do {
@@ -55,10 +52,8 @@ actor VideoWriter {
             
             // Start
             assetWriter!.startWriting()
-            assetWriter!.startSession(atSourceTime: .zero)
             
             isRecording = true
-            frameCount = 0
             
             return true
             
@@ -74,6 +69,11 @@ actor VideoWriter {
               let pixelBufferAdaptor = pixelBufferAdaptor,
               videoInput.isReadyForMoreMediaData else {
             return
+        }
+        
+        if startTime == nil {
+            startTime = time
+            assetWriter?.startSession(atSourceTime: startTime!)
         }
         
         let frame = CIImage(cvPixelBuffer: pixelBuffer)
