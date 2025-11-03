@@ -20,6 +20,7 @@ actor VideoWriter {
     private var isRecording = false
     private var frameCount: Int64 = 0
     private var startTime: CMTime?
+    private var ciContext: CIContext?
     
     // MARK: - Public Methods
     func startRecording(to outputURL: URL) -> Bool {
@@ -32,20 +33,31 @@ actor VideoWriter {
             // Use high-level preset for video settings
             let videoSettings = AVOutputSettingsAssistant(preset: .preset1920x1080)?
                 .videoSettings ?? [
-                    AVVideoCodecKey: AVVideoCodecType.hevc,
+                    AVVideoCodecKey: CameraSettings.videoCodec,
                     AVVideoWidthKey: CameraSettings.resolution.width,
                     AVVideoHeightKey: CameraSettings.resolution.height
                 ]
             
             // Create video input
             videoInput = AVAssetWriterInput(mediaType: .video, outputSettings: videoSettings)
-            videoInput?.expectsMediaDataInRealTime = false
+            videoInput?.expectsMediaDataInRealTime = true
             
-            // Simple pixel buffer adaptor - let system handle optimization
+            // Configure pixel buffer attributes for better compatibility
+            let pixelBufferAttributes: [String: Any] = [
+                kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
+                kCVPixelBufferWidthKey as String: Int(CameraSettings.resolution.width),
+                kCVPixelBufferHeightKey as String: Int(CameraSettings.resolution.height),
+                kCVPixelBufferIOSurfacePropertiesKey as String: [:]
+            ]
+            
+            // Simple pixel buffer adaptor with explicit attributes
             pixelBufferAdaptor = AVAssetWriterInputPixelBufferAdaptor(
                 assetWriterInput: videoInput!,
-                sourcePixelBufferAttributes: nil
+                sourcePixelBufferAttributes: pixelBufferAttributes
             )
+            
+            // Create reusable CIContext for better performance
+            ciContext = CIContext(options: [.useSoftwareRenderer: false])
             
             // Add to writer
             assetWriter!.add(videoInput!)
@@ -67,7 +79,9 @@ actor VideoWriter {
         guard isRecording,
               let videoInput = videoInput,
               let pixelBufferAdaptor = pixelBufferAdaptor,
+              let ciContext = ciContext,
               videoInput.isReadyForMoreMediaData else {
+            print("Skipping frame - not ready for more data")
             return
         }
         
@@ -76,15 +90,41 @@ actor VideoWriter {
             assetWriter?.startSession(atSourceTime: startTime!)
         }
         
+        // Create overlay and combine with frame
         let frame = CIImage(cvPixelBuffer: pixelBuffer)
-        let overlay = createOverlayFrame(for: frame.extent, overlay)
-        let combined = overlay.composited(over: frame)
+        let overlayImage = createOverlayFrame(for: frame.extent, overlay)
+        let combined = overlayImage.composited(over: frame)
         
-        // Render combined image back into the same pixel buffer
-        let ciContext = CIContext()
-        ciContext.render(combined, to: pixelBuffer)
+        // Create a NEW pixel buffer for the combined image
+        guard let pixelBufferPool = pixelBufferAdaptor.pixelBufferPool,
+              let newPixelBuffer = createPixelBuffer(from: pixelBufferPool) else {
+            print("Failed to create new pixel buffer")
+            return
+        }
         
-        pixelBufferAdaptor.append(pixelBuffer, withPresentationTime: time)
+        // Render combined image to the NEW pixel buffer
+        ciContext.render(combined, to: newPixelBuffer)
+        
+        // Append the new pixel buffer with error handling
+        let success = pixelBufferAdaptor.append(newPixelBuffer, withPresentationTime: time)
+        if !success {
+            if let error = assetWriter?.error {
+                print("Failed to append pixel buffer: \(error)")
+            } else {
+                print("Failed to append pixel buffer: Unknown error")
+            }
+        }
+    }
+    
+    /// Helper method to create a pixel buffer from the pool
+    private func createPixelBuffer(from pool: CVPixelBufferPool) -> CVPixelBuffer? {
+        var pixelBuffer: CVPixelBuffer?
+        let status = CVPixelBufferPoolCreatePixelBuffer(nil, pool, &pixelBuffer)
+        guard status == kCVReturnSuccess else {
+            print("Error creating pixel buffer from pool: \(status)")
+            return nil
+        }
+        return pixelBuffer
     }
     
     /// Stops recording and finalizes the video file
@@ -101,6 +141,14 @@ actor VideoWriter {
         
         let success = assetWriter?.status == .completed
         let error = assetWriter?.error
+        
+        // Clean up resources
+        ciContext = nil
+        assetWriter = nil
+        videoInput = nil
+        pixelBufferAdaptor = nil
+        startTime = nil
+        frameCount = 0
         
         return (success: success, error: error)
     }
