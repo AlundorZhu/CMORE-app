@@ -64,7 +64,7 @@ class VideoStreamViewModel: NSObject, ObservableObject {
     /// For fps calculation
     private var lastTimestamp: CMTime?
     
-    private var processingTasks: [CMTime: Task<Void,Never>] = [:]
+    private var processingTasks: [UInt: Task<Void,Never>] = [:]
     
     /// For recording
     private var packetBuffer: Heap<FramePacket> = []
@@ -390,6 +390,7 @@ extension VideoStreamViewModel: AVCaptureVideoDataOutputSampleBufferDelegate {
         
         // Avoid pile up on frames
         guard processingTasks.count < maxFrameBehind else {
+            print("Current buffered number of frames: \(processingTasks.count)")
             print("Skipped! Frame: \(frameNum)")
             return
         }
@@ -399,10 +400,11 @@ extension VideoStreamViewModel: AVCaptureVideoDataOutputSampleBufferDelegate {
         // Extract the pixel buffer from the sample buffer
         guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
         
-        // Process the frame
-        processingTasks[currentTime] = Task {
-            
-            defer { processingTasks[currentTime] = nil }
+        // Process the frame - capture frameNum to avoid race condition
+        let currentFrameNum = frameNum
+        processingTasks[currentFrameNum] = Task {
+
+            defer { processingTasks[currentFrameNum] = nil }
             let processedResult = await frameProcessor.processFrame(pixelBuffer)
             
             await MainActor.run {
