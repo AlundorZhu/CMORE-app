@@ -64,6 +64,8 @@ class VideoStreamViewModel: NSObject, ObservableObject {
     /// For fps calculation
     private var lastTimestamp: CMTime?
     
+    private var processingTasks: [CMTime: Task<Void,Never>] = [:]
+    
     /// For recording
     private var packetBuffer: Heap<FramePacket> = []
     
@@ -325,6 +327,12 @@ class VideoStreamViewModel: NSObject, ObservableObject {
             
             await frameProcessor.stopCountingBlocks()
             
+            // Wait to finish all the processing tasks
+            let tasks = processingTasks.values
+            for task in tasks {
+                await task.value
+            }
+            
             // Push the rest of packet to the stream
             while !packetBuffer.isEmpty {
                 frameContinuation?.yield(packetBuffer.popMin()!)
@@ -381,26 +389,25 @@ extension VideoStreamViewModel: AVCaptureVideoDataOutputSampleBufferDelegate {
         lastTimestamp = currentTime
         
         // Avoid pile up on frames
-        guard numFrameBehind < maxFrameBehind else {
+        guard processingTasks.count < maxFrameBehind else {
             print("Skipped! Frame: \(frameNum)")
             return
         }
         
         print("Processing Frame: \(frameNum)")
-        numFrameBehind += 1
         
         // Extract the pixel buffer from the sample buffer
         guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
         
-        // Process the frame for face detection (runs on background thread)
-        Task {
+        // Process the frame
+        processingTasks[currentTime] = Task {
+            
+            defer { processingTasks[currentTime] = nil }
             let processedResult = await frameProcessor.processFrame(pixelBuffer)
             
             await MainActor.run {
                 self.overlay = processedResult
             }
-            
-            numFrameBehind -= 1
             
             // If recording, add this frame to the jobs dictionary
             if isRecording {
