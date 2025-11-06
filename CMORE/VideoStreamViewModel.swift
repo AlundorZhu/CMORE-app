@@ -235,9 +235,6 @@ class VideoStreamViewModel: NSObject, ObservableObject, AVCaptureFileOutputRecor
                 captureSession?.addOutput(movieOutput!)
             }
             
-            // Initialize video writer with camera settings
-            videoWriter = VideoWriter()
-            
         } catch {
             print("Error setting up camera: \(error)")
         }
@@ -273,14 +270,11 @@ class VideoStreamViewModel: NSObject, ObservableObject, AVCaptureFileOutputRecor
         
         // Start recording with the movie output
         movieOutput.startRecording(to: outputURL, recordingDelegate: self)
+        print("Recording started")
         
         // Start the block counting algorithm
         Task {
             await frameProcessor.startCountingBlocks()
-            
-            await MainActor.run {
-                print("Recording started")
-            }
         }
     }
     
