@@ -13,14 +13,14 @@ import SwiftUI
 struct CMOREApp: App {
     
     /// @StateObject make it persist through "the App" here
-    @StateObject var realTimeStream = VideoStreamViewModel()
+    @StateObject var realTimeStream = CMOREViewModel()
     
     // The body property defines what appears when the app launches
     var body: some Scene {
         // WindowGroup creates the main window for our app
         // ContentView() is the first screen users will see
         WindowGroup {
-            VideoStreamView(viewModel: realTimeStream)
+            CMOREView(viewModel: realTimeStream)
                 .task{
                     await realTimeStream.startCamera()
                 }

@@ -13,9 +13,9 @@ import AVFoundation
 ///   without cropping (letterboxes on the short dimension).
 /// - Overlays recording controls and status on top of the preview.
 /// - Keeps face bounding boxes aligned with the preview area.
-struct VideoStreamView: View {
+struct CMOREView: View {
     // View model driving camera and recording state
-    @ObservedObject var viewModel: VideoStreamViewModel
+    @ObservedObject var viewModel: CMOREViewModel
 
     // The target stream aspect ratio (e.g., 1920x1080 = 16:9)
     private var streamAspect: CGFloat {
@@ -75,5 +75,5 @@ struct VideoStreamView: View {
 
 // MARK: - Preview
 #Preview {
-    VideoStreamView(viewModel: VideoStreamViewModel())
+    CMOREView(viewModel: CMOREViewModel())
 }
