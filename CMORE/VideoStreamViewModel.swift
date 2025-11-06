@@ -16,7 +16,7 @@ import UniformTypeIdentifiers
 /// This class manages camera recording functionality with a simplified interface
 /// It uses the MVVM (Model-View-ViewModel) pattern to separate business logic from UI
 /// SIMPLIFIED: Removed video file loading, automatic camera startup, single recording button
-class VideoStreamViewModel: NSObject, ObservableObject {
+class VideoStreamViewModel: NSObject, ObservableObject, AVCaptureFileOutputRecordingDelegate {
     // MARK: - Published Properties
     // @Published automatically notifies the UI when these values change
     
@@ -41,6 +41,9 @@ class VideoStreamViewModel: NSObject, ObservableObject {
     /// Handles video data output from the camera
     private var videoOutput: AVCaptureVideoDataOutput?
     
+    /// Handles movie file output for recording
+    private var movieOutput: AVCaptureMovieFileOutput?
+    
     /// Custom video writer for recording processed frames with face detection
     private var videoWriter: VideoWriter?
     
@@ -64,28 +67,6 @@ class VideoStreamViewModel: NSObject, ObservableObject {
     /// For fps calculation
     private var lastTimestamp: CMTime?
     
-    private var processingTasks: [UInt: Task<Void,Never>] = [:]
-    
-    /// For recording
-    private var packetBuffer: Heap<FramePacket> = []
-    
-    private struct FramePacket: Comparable {
-        let time: CMTime
-        let pixelBuffer: CVImageBuffer
-        let overlay: FrameResult
-        
-        static func < (lhs: FramePacket, rhs: FramePacket) -> Bool {
-            return lhs.time < rhs.time
-        }
-        
-        static func == (lhs: FramePacket, rhs: FramePacket) -> Bool {
-            return lhs.time == rhs.time
-        }
-    }
-    
-    private var frameStream: AsyncStream<FramePacket>?
-    private var frameContinuation: AsyncStream<FramePacket>.Continuation?
-    private var writerTask: Task<Void, Never>?
     
     // MARK: - Initialization
     
@@ -246,6 +227,14 @@ class VideoStreamViewModel: NSObject, ObservableObject {
                 captureSession?.addOutput(videoOutput!)
             }
             
+            // Set up movie file output for recording
+            movieOutput = AVCaptureMovieFileOutput()
+            
+            // Add movie output to the session
+            if captureSession?.canAddOutput(movieOutput!) == true {
+                captureSession?.addOutput(movieOutput!)
+            }
+            
             // Initialize video writer with camera settings
             videoWriter = VideoWriter()
             
@@ -264,8 +253,8 @@ class VideoStreamViewModel: NSObject, ObservableObject {
     
     /// Starts video recording to a file
     private func startRecording() {
-        guard let videoWriter = videoWriter else {
-            print("Video writer not available")
+        guard let movieOutput = movieOutput else {
+            print("Movie output not available")
             return
         }
 
@@ -279,89 +268,41 @@ class VideoStreamViewModel: NSObject, ObservableObject {
         let videoFileName = "CMORE_Recording_\(Date().timeIntervalSince1970).mov"
         let outputURL = documentsPath.appendingPathComponent(videoFileName)
         
-        // Create a channel (AsyncStream) for frames
-        frameStream = AsyncStream<FramePacket> { continuation in
-            self.frameContinuation = continuation
-        }
+        // Store the URL for later use
+        currentVideoURL = outputURL
         
-        // Start recording with the video writer
-        Task{
+        // Start recording with the movie output
+        movieOutput.startRecording(to: outputURL, recordingDelegate: self)
+        
+        // Start the block counting algorithm
+        Task {
+            await frameProcessor.startCountingBlocks()
             
-            // ensure the recording started successfully.
-            if await videoWriter.startRecording(to: outputURL) {
-                
-                // Start the block counting algorithm
-                await frameProcessor.startCountingBlocks()
-                
-                // Launch the writer task that consumes the stream
-                writerTask = Task.detached { [weak self] in
-                    guard let self, let stream = self.frameStream else { return }
-                    for await packet in stream {
-                        await self.videoWriter?.append(packet.pixelBuffer, overlay: packet.overlay, at: packet.time)
-                    }
-                }
-                
-                // Update UI
-                await MainActor.run {
-                    print("Recording started")
-                    self.currentVideoURL = outputURL
-                }
-            } else {
-                await MainActor.run {
-                    print("Failed to start recording")
-                }
+            await MainActor.run {
+                print("Recording started")
             }
         }
     }
     
     /// Stops video recording
     private func stopRecording() {
-        guard let videoWriter = videoWriter else { return }
+        guard let movieOutput = movieOutput else { return }
         
         /// Recording has to be started
         guard isRecording else { return }
+        
+        // Check if actually recording
+        guard movieOutput.isRecording else { return }
+        
         isRecording = false
         
-        // Stop recording with async/await
+        // Stop the block counting algorithm
         Task {
-            
             await frameProcessor.stopCountingBlocks()
-            
-            // Wait to finish all the processing tasks
-            let tasks = processingTasks.values
-            for task in tasks {
-                await task.value
-            }
-            
-            // Push the rest of packet to the stream
-            while !packetBuffer.isEmpty {
-                frameContinuation?.yield(packetBuffer.popMin()!)
-            }
-            
-            // Finish the stream so the writer loop can exit
-            frameContinuation?.finish()
-            frameContinuation = nil
-
-            // Wait for the writer to finish draining and exit
-            await writerTask?.value
-            writerTask = nil
-            
-            let result = await videoWriter.stopRecording()
-            
-            await MainActor.run {
-                self.isRecording = false
-                
-                if let error = result.error {
-                    print("Recording error: \(error)")
-                } else if result.success {
-                    // Successfully recorded - ask user to save or discard
-                    print("Recording completed with face detection! Save or discard?")
-                    self.showSaveConfirmation = true
-                } else {
-                    print("Recording failed: Unknown error")
-                }
-            }
         }
+        
+        // Stop recording - delegate methods will be called when finished
+        movieOutput.stopRecording()
     }
 }
 
@@ -389,8 +330,8 @@ extension VideoStreamViewModel: AVCaptureVideoDataOutputSampleBufferDelegate {
         lastTimestamp = currentTime
         
         // Avoid pile up on frames
-        guard processingTasks.count < maxFrameBehind else {
-            print("Current buffered number of frames: \(processingTasks.count)")
+        guard numFrameBehind < maxFrameBehind else {
+            print("Current buffered number of frames: \(numFrameBehind)")
             print("Skipped! Frame: \(frameNum)")
             return
         }
@@ -400,23 +341,13 @@ extension VideoStreamViewModel: AVCaptureVideoDataOutputSampleBufferDelegate {
         // Extract the pixel buffer from the sample buffer
         guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
         
-        // Process the frame - capture frameNum to avoid race condition
-        let currentFrameNum = frameNum
-        processingTasks[currentFrameNum] = Task {
+        // Process the frame
+        Task {
 
-            defer { processingTasks[currentFrameNum] = nil }
             let processedResult = await frameProcessor.processFrame(pixelBuffer)
             
             await MainActor.run {
                 self.overlay = processedResult
-            }
-            
-            // If recording, add this frame to the jobs dictionary
-            if isRecording {
-                let packet = FramePacket(time: currentTime, pixelBuffer: pixelBuffer, overlay: processedResult)
-                packetBuffer.insert(packet)
-                
-                frameContinuation?.yield(packetBuffer.popMin()!)
             }
         }
     }
@@ -424,6 +355,30 @@ extension VideoStreamViewModel: AVCaptureVideoDataOutputSampleBufferDelegate {
     func captureOutput(_ output: AVCaptureOutput, didDrop sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
         frameNum += 1
         print("Avfundation Dropped frame: \(frameNum) automatically!")
+    }
+}
+
+// MARK: - AVCaptureFileOutputRecordingDelegate
+/// This extension handles movie file recording callbacks
+extension VideoStreamViewModel {
+    /// Called when recording starts successfully
+    func fileOutput(_ output: AVCaptureFileOutput, didStartRecordingTo fileURL: URL, from connections: [AVCaptureConnection]) {
+        print("Started recording to: \(fileURL)")
+    }
+    
+    /// Called when recording finishes
+    func fileOutput(_ output: AVCaptureFileOutput, didFinishRecordingTo outputFileURL: URL, from connections: [AVCaptureConnection], error: Error?) {
+        Task { @MainActor in
+            if let error = error {
+                print("Recording error: \(error.localizedDescription)")
+                // Clean up on error
+                self.currentVideoURL = nil
+            } else {
+                // Successfully recorded - ask user to save or discard
+                print("Recording completed! Save or discard?")
+                self.showSaveConfirmation = true
+            }
+        }
     }
 }
 
