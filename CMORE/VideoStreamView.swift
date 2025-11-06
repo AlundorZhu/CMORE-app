@@ -19,7 +19,7 @@ struct VideoStreamView: View {
 
     // The target stream aspect ratio (e.g., 1920x1080 = 16:9)
     private var streamAspect: CGFloat {
-        CGFloat(CameraSettings.resolution.width) / CGFloat(CameraSettings.resolution.height)
+        CameraSettings.resolution.width / CameraSettings.resolution.height
     }
 
     var body: some View {
@@ -60,16 +60,16 @@ struct VideoStreamView: View {
         }
         .ignoresSafeArea()
         // Save/discard confirmation after recording ends
-        .alert("Save Video?", isPresented: $viewModel.showSaveConfirmation) {
-            Button("Save to Photos") {
-                viewModel.saveVideoToPhotos()
-            }
-            Button("Discard", role: .destructive) {
-                viewModel.discardVideo()
-            }
-        } message: {
-            Text("Would you like to save this recorded video to your Photos library or discard it?")
-        }
+//        .alert("Save Video?", isPresented: $viewModel.showSaveConfirmation) {
+//            Button("Save to Photos") {
+//                viewModel.saveVideoToPhotos()
+//            }
+//            Button("Discard", role: .destructive) {
+//                viewModel.discardVideo()
+//            }
+//        } message: {
+//            Text("Would you like to save this recorded video to your Photos library or discard it?")
+//        }
     }
 }
 

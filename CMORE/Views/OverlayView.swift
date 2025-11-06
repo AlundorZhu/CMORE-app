@@ -28,9 +28,18 @@ struct OverlayView: View {
             BoxView(geometry, boxDetection)
         }
         
-        if let hands = overlay.handPoses {
+        if let hands = overlay.hands {
             ForEach(hands.indices, id: \.self) { i in
                 HandView(geometry, hands[i])
+            }
+        }
+        
+        if let blockROI = overlay.blockROI {
+            BoundingBoxView(geometry, blockROI)
+            if let blocks = overlay.blocks {
+                ForEach(blocks.indices, id: \.self) { i in
+                    BoundingBoxView(geometry, blocks[i], from: blockROI)
+                }
             }
         }
     }

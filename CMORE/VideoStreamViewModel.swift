@@ -4,16 +4,19 @@
 //
 //  Created by ZIQIANG ZHU on 8/19/25.
 //
-import SwiftUI
-import AVFoundation
+
 import UIKit
+import SwiftUI
+import Collections
+import AVFoundation
+import AudioToolbox
 import UniformTypeIdentifiers
 
 // MARK: - VideoStreamViewModel
 /// This class manages camera recording functionality with a simplified interface
 /// It uses the MVVM (Model-View-ViewModel) pattern to separate business logic from UI
 /// SIMPLIFIED: Removed video file loading, automatic camera startup, single recording button
-class VideoStreamViewModel: NSObject, ObservableObject {
+class VideoStreamViewModel: NSObject, ObservableObject, AVCaptureFileOutputRecordingDelegate {
     // MARK: - Published Properties
     // @Published automatically notifies the UI when these values change
     
@@ -21,7 +24,7 @@ class VideoStreamViewModel: NSObject, ObservableObject {
     @Published var isRecording = false
     
     /// Status message for recording operations
-    @Published var recordingStatusMessage: String?
+//    @Published var recordingStatusMessage: String?
     
     /// Whether to show the save confirmation dialog
     @Published var showSaveConfirmation = false
@@ -38,6 +41,9 @@ class VideoStreamViewModel: NSObject, ObservableObject {
     /// Handles video data output from the camera
     private var videoOutput: AVCaptureVideoDataOutput?
     
+    /// Handles movie file output for recording
+    private var movieOutput: AVCaptureMovieFileOutput?
+    
     /// Custom video writer for recording processed frames with face detection
     private var videoWriter: VideoWriter?
     
@@ -45,13 +51,22 @@ class VideoStreamViewModel: NSObject, ObservableObject {
     private var numFrameBehind: Int = 0
     
     /// Maximum of frames allowed to buffer before droping frames
-    private let maxFrameBehind: Int = 6
+    private let maxFrameBehind: Int = 12
+    
+    /// Tracks the current frame number
+    private var frameNum: UInt = 0
     
     /// Background queue for processing video frames (keeps UI responsive)
     private let videoOutputQueue = DispatchQueue(label: "videoOutputQueue", qos: .userInitiated)
     
-    /// Processes each frame for face detection
-    private let frameProcessor = FrameProcessor()
+    /// Processes each frame through it
+    private let frameProcessor = FrameProcessor(onCross: {
+        AudioServicesPlaySystemSound(1054)
+    })
+    
+    /// For fps calculation
+    private var lastTimestamp: CMTime?
+    
     
     // MARK: - Initialization
     
@@ -94,13 +109,9 @@ class VideoStreamViewModel: NSObject, ObservableObject {
         
         // Update UI
         Task { @MainActor in
-            self.recordingStatusMessage = "Video discarded"
+            print("Video discarded")
             self.currentVideoURL = nil
             self.showSaveConfirmation = false
-            
-            // Clear message after a delay
-            try? await Task.sleep(for: .seconds(2))
-            self.recordingStatusMessage = nil
         }
     }
     
@@ -125,20 +136,6 @@ class VideoStreamViewModel: NSObject, ObservableObject {
     // Check supported format
     private func getFormat(for device: AVCaptureDevice) -> AVCaptureDevice.Format {
         
-//         List available formats
-//         for format in device.formats {
-//             let desc = format.formatDescription
-//             let dimensions = CMVideoFormatDescriptionGetDimensions(desc)
-//             print("Format: \(dimensions.width)x\(dimensions.height)")
-//
-//             let frameRateRanges = format.videoSupportedFrameRateRanges
-//             for range in frameRateRanges {
-//                 print("  Frame rate: \(range.minFrameRate)-\(range.maxFrameRate)")
-//             }
-//
-//             print("  ISO range: \(format.minISO)-\(format.maxISO)")
-//             print("  Shutter range: \(format.minExposureDuration)-\(format.maxExposureDuration)")
-//         }
         let allFormats = device.formats
             
         // Break down the complex condition into separate predicates
@@ -147,9 +144,9 @@ class VideoStreamViewModel: NSObject, ObservableObject {
             format.formatDescription.dimensions.height == 1080
         }
         
-        let hasDepthDataSupport: (AVCaptureDevice.Format) -> Bool = { format in
-            !format.supportedDepthDataFormats.isEmpty
-        }
+//        let hasDepthDataSupport: (AVCaptureDevice.Format) -> Bool = { format in
+//            !format.supportedDepthDataFormats.isEmpty
+//        }
         
         let supportsFrameRate: (AVCaptureDevice.Format) -> Bool = { format in
             format.videoSupportedFrameRateRanges.contains { (range: AVFrameRateRange) in
@@ -158,9 +155,9 @@ class VideoStreamViewModel: NSObject, ObservableObject {
         }
         
         // Combine the conditions
-        guard let targetFormat = (allFormats.last { format in
+        guard let targetFormat = (allFormats.first { format in
             hasCorrectResolution(format) &&
-            hasDepthDataSupport(format) &&
+//            hasDepthDataSupport(format) &&
             supportsFrameRate(format)
         }) else {
             fatalError("No supported format")
@@ -173,7 +170,7 @@ class VideoStreamViewModel: NSObject, ObservableObject {
     /// Camera starts automatically, no separate streaming control needed
     private func setupCamera() {
         // Get the default LiDAR depth camera (back camera)
-        guard let camera = AVCaptureDevice.default(.builtInLiDARDepthCamera, for: .video, position: .back) else {
+        guard let camera = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back) else {
             print("Failed to get camera with LiDAR device")
             return
         }
@@ -186,27 +183,18 @@ class VideoStreamViewModel: NSObject, ObservableObject {
 
             camera.activeFormat = format
             /// Set the max exposure duration to allow faster shutter speeds (not possible)
-            // camera.activeFormat.maxExposureDuration = CameraSettings.maxExposureDuration
+//            camera.activeFormat.maxExposureDuration = CameraSettings.maxExposureDuration
             /// Set the minimum frame duration to control frame rate
-            camera.activeVideoMinFrameDuration = CameraSettings.minFrameDuration
-            
-            // let newISO = calculateISO(
-            //     old: camera.exposureDuration,
-            //     new: CameraSettings.ShutterSpeed,
-            //     current: camera.iso
-            // )
-
-            // print("Current ISO: \(camera.iso)")
-            // print("Target ISO: \(newISO)")
-
-            // print("Current Shutter Speed: \(camera.exposureDuration)")
-
-            // let clampedISO = min(max(newISO, camera.activeFormat.minISO), camera.activeFormat.maxISO)
-            // print("Clamped ISO: \(clampedISO)")
+//            camera.activeVideoMinFrameDuration = CMTime(value: 1, timescale: Int32(CameraSettings.frameRate))
+            camera.activeVideoMaxFrameDuration = CMTime(value: 1, timescale: Int32(CameraSettings.frameRate))
+//            camera.setExposureModeCustom(duration: CameraSettings.maxExposureDuration, iso: AVCaptureDevice.currentISO)
 
             camera.unlockForConfiguration()
             
             print("Selected video format: \(camera.activeFormat)")
+            
+            print("Min frame duration: \(camera.activeVideoMinFrameDuration)")
+            print("Max frame duration: \(camera.activeVideoMaxFrameDuration)")
             
             // print the actual shutter speed and frame rate
             let shutterSpeed = camera.exposureDuration.seconds
@@ -219,6 +207,7 @@ class VideoStreamViewModel: NSObject, ObservableObject {
             
             // Create and configure the capture session
             captureSession = AVCaptureSession()
+            captureSession?.sessionPreset = .inputPriority
             
             // Create input from the camera
             let cameraInput = try AVCaptureDeviceInput(device: camera)
@@ -238,8 +227,13 @@ class VideoStreamViewModel: NSObject, ObservableObject {
                 captureSession?.addOutput(videoOutput!)
             }
             
-            // Initialize video writer with camera settings
-            videoWriter = VideoWriter()
+            // Set up movie file output for recording
+            movieOutput = AVCaptureMovieFileOutput()
+            
+            // Add movie output to the session
+            if captureSession?.canAddOutput(movieOutput!) == true {
+                captureSession?.addOutput(movieOutput!)
+            }
             
         } catch {
             print("Error setting up camera: \(error)")
@@ -256,8 +250,8 @@ class VideoStreamViewModel: NSObject, ObservableObject {
     
     /// Starts video recording to a file
     private func startRecording() {
-        guard let videoWriter = videoWriter else {
-            print("Video writer not available")
+        guard let movieOutput = movieOutput else {
+            print("Movie output not available")
             return
         }
 
@@ -271,56 +265,38 @@ class VideoStreamViewModel: NSObject, ObservableObject {
         let videoFileName = "CMORE_Recording_\(Date().timeIntervalSince1970).mov"
         let outputURL = documentsPath.appendingPathComponent(videoFileName)
         
-        // Start recording with the video writer
-        Task{
-            if await videoWriter.startRecording(to: outputURL) {
-                
-                // Start the block counting algorithm
-                await frameProcessor.startCountingBlocks()
-                
-                // Update UI
-                await MainActor.run {
-                    self.recordingStatusMessage = "Recording started with face detection..."
-                    self.currentVideoURL = outputURL
-                }
-            } else {
-                await MainActor.run {
-                    self.recordingStatusMessage = "Failed to start recording"
-                }
-            }
+        // Store the URL for later use
+        currentVideoURL = outputURL
+        
+        // Start recording with the movie output
+        movieOutput.startRecording(to: outputURL, recordingDelegate: self)
+        print("Recording started")
+        
+        // Start the block counting algorithm
+        Task {
+            await frameProcessor.startCountingBlocks()
         }
     }
     
     /// Stops video recording
     private func stopRecording() {
-        guard let videoWriter = videoWriter else { return }
+        guard let movieOutput = movieOutput else { return }
         
         /// Recording has to be started
         guard isRecording else { return }
+        
+        // Check if actually recording
+        guard movieOutput.isRecording else { return }
+        
         isRecording = false
         
-        // Stop recording with async/await
+        // Stop the block counting algorithm
         Task {
-            
             await frameProcessor.stopCountingBlocks()
-            
-            let result = await videoWriter.stopRecording()
-            
-            await MainActor.run {
-                self.isRecording = false
-                
-                if let error = result.error {
-                    self.recordingStatusMessage = "Recording failed: \(error.localizedDescription)"
-                    print("Recording error: \(error)")
-                } else if result.success {
-                    // Successfully recorded - ask user to save or discard
-                    self.recordingStatusMessage = "Recording completed with face detection! Save or discard?"
-                    self.showSaveConfirmation = true
-                } else {
-                    self.recordingStatusMessage = "Recording failed: Unknown error"
-                }
-            }
         }
+        
+        // Stop recording - delegate methods will be called when finished
+        movieOutput.stopRecording()
     }
 }
 
@@ -334,36 +310,68 @@ extension VideoStreamViewModel: AVCaptureVideoDataOutputSampleBufferDelegate {
     ///   - connection: The connection information
     func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
         
+        let currentTime = sampleBuffer.presentationTimeStamp
+        frameNum += 1
+        
+        print(String(repeating: "-", count: 50))
+        
+        if let last = lastTimestamp {
+            let delta = CMTimeGetSeconds(currentTime - last)
+            let actualFPS = 1.0 / delta
+            print("Actual FPS: \(actualFPS)")
+        }
+        
+        lastTimestamp = currentTime
+        
         // Avoid pile up on frames
         guard numFrameBehind < maxFrameBehind else {
-            print("Frame skipped!")
+            print("Current buffered number of frames: \(numFrameBehind)")
+            print("Skipped! Frame: \(frameNum)")
             return
         }
         
-        numFrameBehind += 1
+        print("Processing Frame: \(frameNum)")
         
         // Extract the pixel buffer from the sample buffer
         guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
         
-        // Convert to CIImage for processing
-        let ciImage = CIImage(cvPixelBuffer: pixelBuffer)
-        
-        // Process the frame for face detection (runs on background thread)
+        // Process the frame
         Task {
-            let processedResult = await frameProcessor.processFrame(ciImage)
+
+            let processedResult = await frameProcessor.processFrame(pixelBuffer)
             
             await MainActor.run {
                 self.overlay = processedResult
             }
-            
-            numFrameBehind -= 1
-            
-            
-            // If recording, add this frame to the video writer
-//            if isRecording,
-//               let videoWriter = videoWriter {
-//                videoWriter.appendFrame(processedFrame)
-//            }
+        }
+    }
+    
+    func captureOutput(_ output: AVCaptureOutput, didDrop sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
+        frameNum += 1
+        print("Avfundation Dropped frame: \(frameNum) automatically!")
+    }
+}
+
+// MARK: - AVCaptureFileOutputRecordingDelegate
+/// This extension handles movie file recording callbacks
+extension VideoStreamViewModel {
+    /// Called when recording starts successfully
+    func fileOutput(_ output: AVCaptureFileOutput, didStartRecordingTo fileURL: URL, from connections: [AVCaptureConnection]) {
+        print("Started recording to: \(fileURL)")
+    }
+    
+    /// Called when recording finishes
+    func fileOutput(_ output: AVCaptureFileOutput, didFinishRecordingTo outputFileURL: URL, from connections: [AVCaptureConnection], error: Error?) {
+        Task { @MainActor in
+            if let error = error {
+                print("Recording error: \(error.localizedDescription)")
+                // Clean up on error
+                self.currentVideoURL = nil
+            } else {
+                // Successfully recorded - ask user to save or discard
+                print("Recording completed! Save or discard?")
+                self.showSaveConfirmation = true
+            }
         }
     }
 }
@@ -375,7 +383,7 @@ extension VideoStreamViewModel {
     private func saveVideoToPhotosLibrary(_ videoURL: URL) {
         // Check if the file exists
         guard FileManager.default.fileExists(atPath: videoURL.path) else {
-            recordingStatusMessage = "Error: Video file not found"
+            print("Error: Video file not found")
             return
         }
         
@@ -391,21 +399,15 @@ extension VideoStreamViewModel {
     @objc private func video(_ videoPath: String, didFinishSavingWithError error: Error?, contextInfo: UnsafeRawPointer) {
         Task { @MainActor in
             if let error = error {
-                self.recordingStatusMessage = "Failed to save video: \(error.localizedDescription)"
+                print("Error: Failed to save video: \(error.localizedDescription)")
             } else {
-                self.recordingStatusMessage = "Video saved to Photos!"
+                print("Video saved to Photos!")
                 
                 // Clean up the temporary file after successful save
                 let url = URL(fileURLWithPath: videoPath)
                 try? FileManager.default.removeItem(at: url)
-                
-                // Clear message after a delay
-                try? await Task.sleep(for: .seconds(2))
-                self.recordingStatusMessage = nil
             }
         }
     }
 }
-
-
 

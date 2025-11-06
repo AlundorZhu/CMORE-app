@@ -74,7 +74,7 @@ struct BoxDetector {
         // Return keypoints from the best detection
         if var bestDetection = filteredDetections.first {
             
-            print("Object confidence: \(bestDetection.objectConf)")
+//            print("Object confidence: \(bestDetection.objectConf)")
             
             // Normalize the results before returning it
             for idx in bestDetection.keypoints.indices {
@@ -83,7 +83,7 @@ struct BoxDetector {
             return bestDetection
         }
         
-        print("No box detected!")
+//        print("No box detected!")
         return nil
     }
     
@@ -199,5 +199,12 @@ struct BoxDetection {
     subscript(name: String) -> [Float] {
         let idx = keypointNames.firstIndex(of: name)!
         return keypoints[idx]
+    }
+    
+    func normalizedKeypoint(for name: String) -> NormalizedPoint{
+        return NormalizedPoint(
+            x: CGFloat(self[name][0]) / CameraSettings.resolution.width,
+            y: CGFloat(self[name][1]) / CameraSettings.resolution.height
+        )
     }
 }
