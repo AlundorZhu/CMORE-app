@@ -76,6 +76,7 @@ class CMOREViewModel: ObservableObject {
     func toggleRecording() {
         if camera.isRecording {
             isRecording = false
+            Task { await frameProcessor.stopCountingBlocks() }
             camera.stopRecording()
         } else {
             // Create a unique filename for the recorded video
@@ -96,6 +97,9 @@ class CMOREViewModel: ObservableObject {
                     self.showSaveConfirmation = true
                 }
             })
+            
+            Task { await frameProcessor.startCountingBlocks() }
+            
             isRecording = true
         }
     }
