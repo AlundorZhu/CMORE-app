@@ -23,9 +23,6 @@ class VideoStreamViewModel: NSObject, ObservableObject, AVCaptureFileOutputRecor
     /// Whether the camera is currently recording video
     @Published var isRecording = false
     
-    /// Status message for recording operations
-//    @Published var recordingStatusMessage: String?
-    
     /// Whether to show the save confirmation dialog
     @Published var showSaveConfirmation = false
     
@@ -43,9 +40,6 @@ class VideoStreamViewModel: NSObject, ObservableObject, AVCaptureFileOutputRecor
     
     /// Handles movie file output for recording
     private var movieOutput: AVCaptureMovieFileOutput?
-    
-    /// Custom video writer for recording processed frames with face detection
-    private var videoWriter: VideoWriter?
     
     /// Number of frames currently waiting to get processed
     private var numFrameBehind: Int = 0
