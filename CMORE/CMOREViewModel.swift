@@ -16,7 +16,7 @@ import UniformTypeIdentifiers
 /// This class manages camera recording functionality with a simplified interface
 /// It uses the MVVM (Model-View-ViewModel) pattern to separate business logic from UI
 /// SIMPLIFIED: Removed video file loading, automatic camera startup, single recording button
-class CMOREViewModel: NSObject, ObservableObject {
+class CMOREViewModel: ObservableObject {
     // MARK: - Published Properties
     // @Published automatically notifies the UI when these values change
     
@@ -29,38 +29,36 @@ class CMOREViewModel: NSObject, ObservableObject {
     /// Show the visualization overlay in real-time
     @Published var overlay: FrameResult?
     
-    private let camera = Camera()
+    private let camera: Camera
     
     /// The URL of the current video being processed (temporary)
     private var currentVideoURL: URL?
     
-    /// Number of frames currently waiting to get processed
-    private var numFrameBehind: Int = 0
-    
-    /// Maximum of frames allowed to buffer before droping frames
-    private let maxFrameBehind: Int = 12
-    
-    /// Tracks the current frame number
-    private var frameNum: UInt = 0
-    
     /// Background queue for processing video frames (keeps UI responsive)
-    private let videoOutputQueue = DispatchQueue(label: "videoOutputQueue", qos: .userInitiated)
+    private let videoOutputQueue: DispatchQueue
     
     /// Processes each frame through it
-    private let frameProcessor = FrameProcessor(onCross: {
-        AudioServicesPlaySystemSound(1054)
-    })
+    private let frameProcessor: FrameProcessor
     
-    /// For fps calculation
-    private var lastTimestamp: CMTime?
+    private lazy var captureOutputDelegate: CaptureOutputDelegate = {
+        return CaptureOutputDelegate(frameProcessor: self.frameProcessor, forFrameResult: { [weak self] (result: FrameResult) in
+            self?.overlay = result
+        })
+    }()
     
     
     // MARK: - Initialization
     
-    override init() {
-        super.init()
+    init() {
+        self.videoOutputQueue = DispatchQueue(label: "videoOutputQueue", qos: .userInitiated)
         
-        camera.setupCamera(outputFrameTo: <#T##any AVCaptureVideoDataOutputSampleBufferDelegate#>, on: <#T##DispatchQueue#>)
+        self.camera = Camera()
+        
+        self.frameProcessor = FrameProcessor(onCross: {
+            AudioServicesPlaySystemSound(1054)
+        })
+        
+        self.camera.setupCamera(outputFrameTo: self.captureOutputDelegate, on: self.videoOutputQueue)
     }
     
     /// Clean up when the ViewModel is destroyed
@@ -70,10 +68,27 @@ class CMOREViewModel: NSObject, ObservableObject {
     
     /// Toggles video recording on/off (main functionality)
     func toggleRecording() {
-        if isRecording {
-            stopRecording()
+        if camera.isRecording {
+            camera.stopRecording()
         } else {
-            startRecording()
+            // Create a unique filename for the recorded video
+            let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
+            let videoFileName = "CMORE_Recording_\(Date().timeIntervalSince1970).mov"
+            let outputURL = documentsPath.appendingPathComponent(videoFileName)
+            
+            currentVideoURL = outputURL
+            
+            camera.startRecording(to: outputURL, whenFinishRecording: { error in
+                if let error {
+                    print("Recording error: \(error.localizedDescription)")
+                    // Clean up on error
+                    self.currentVideoURL = nil
+                } else {
+                    // Successfully recorded - ask user to save or discard
+                    print("Recording completed! Save or discard?")
+                    self.showSaveConfirmation = true
+                }
+            })
         }
     }
     
@@ -99,134 +114,7 @@ class CMOREViewModel: NSObject, ObservableObject {
             self.showSaveConfirmation = false
         }
     }
-    
-    /// Starts video recording to a file
-    private func startRecording() {
-        guard let movieOutput = movieOutput else {
-            print("Movie output not available")
-            return
-        }
-
-        // Don't start recording if already recording
-        guard !isRecording else { return }
-        
-        isRecording = true
-            
-        // Create a unique filename for the recorded video
-        let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
-        let videoFileName = "CMORE_Recording_\(Date().timeIntervalSince1970).mov"
-        let outputURL = documentsPath.appendingPathComponent(videoFileName)
-        
-        // Store the URL for later use
-        currentVideoURL = outputURL
-        
-        // Start recording with the movie output
-        movieOutput.startRecording(to: outputURL, recordingDelegate: self)
-        print("Recording started")
-        
-        // Start the block counting algorithm
-        Task {
-            await frameProcessor.startCountingBlocks()
-        }
-    }
-    
-    /// Stops video recording
-    private func stopRecording() {
-        guard let movieOutput = movieOutput else { return }
-        
-        /// Recording has to be started
-        guard isRecording else { return }
-        
-        // Check if actually recording
-        guard movieOutput.isRecording else { return }
-        
-        isRecording = false
-        
-        // Stop the block counting algorithm
-        Task {
-            await frameProcessor.stopCountingBlocks()
-        }
-        
-        // Stop recording - delegate methods will be called when finished
-        movieOutput.stopRecording()
-    }
 }
-
-// MARK: - AVCaptureVideoDataOutputSampleBufferDelegate
-/// This extension handles camera frame data for face detection processing and video recording
-extension CMOREViewModel: AVCaptureVideoDataOutputSampleBufferDelegate {
-    /// Called for each new camera frame - processes for face detection and records if recording
-    /// - Parameters:
-    ///   - output: The capture output that produced the frame
-    ///   - sampleBuffer: The frame data
-    ///   - connection: The connection information
-    func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
-        
-        let currentTime = sampleBuffer.presentationTimeStamp
-        frameNum += 1
-        
-        print(String(repeating: "-", count: 50))
-        
-        if let last = lastTimestamp {
-            let delta = CMTimeGetSeconds(currentTime - last)
-            let actualFPS = 1.0 / delta
-            print("Actual FPS: \(actualFPS)")
-        }
-        
-        lastTimestamp = currentTime
-        
-        // Avoid pile up on frames
-        guard numFrameBehind < maxFrameBehind else {
-            print("Current buffered number of frames: \(numFrameBehind)")
-            print("Skipped! Frame: \(frameNum)")
-            return
-        }
-        
-        print("Processing Frame: \(frameNum)")
-        
-        // Extract the pixel buffer from the sample buffer
-        guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
-        
-        // Process the frame
-        Task {
-
-            let processedResult = await frameProcessor.processFrame(pixelBuffer)
-            
-            await MainActor.run {
-                self.overlay = processedResult
-            }
-        }
-    }
-    
-    func captureOutput(_ output: AVCaptureOutput, didDrop sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
-        frameNum += 1
-        print("Avfundation Dropped frame: \(frameNum) automatically!")
-    }
-}
-
-// MARK: - AVCaptureFileOutputRecordingDelegate
-///// This extension handles movie file recording callbacks
-//extension VideoStreamViewModel {
-//    /// Called when recording starts successfully
-//    func fileOutput(_ output: AVCaptureFileOutput, didStartRecordingTo fileURL: URL, from connections: [AVCaptureConnection]) {
-//        print("Started recording to: \(fileURL)")
-//    }
-//    
-//    /// Called when recording finishes
-//    func fileOutput(_ output: AVCaptureFileOutput, didFinishRecordingTo outputFileURL: URL, from connections: [AVCaptureConnection], error: Error?) {
-//        Task { @MainActor in
-//            if let error = error {
-//                print("Recording error: \(error.localizedDescription)")
-//                // Clean up on error
-//                self.currentVideoURL = nil
-//            } else {
-//                // Successfully recorded - ask user to save or discard
-//                print("Recording completed! Save or discard?")
-//                self.showSaveConfirmation = true
-//            }
-//        }
-//    }
-//}
 
 // MARK: - Video Saving Methods
 extension CMOREViewModel {

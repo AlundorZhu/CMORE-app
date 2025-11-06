@@ -63,6 +63,14 @@ actor FrameProcessor {
         
         /// When crossing the bivider
         self.onCrossed = onCross
+        
+        // Send fake input to the ML models to kick start
+        // Send fake input to the ML models to kick start (warm-up)
+        Task {
+            let dummyCIImage = CIImage(color: .gray).cropped(to: CGRect(x: 0, y: 0, width: 640, height: 480))
+            try? await self.boxRequest.perform(on: dummyCIImage)
+            try? await self.blocksRequest.perform(on: dummyCIImage)
+        }
     }
     
     func startCountingBlocks() {

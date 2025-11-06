@@ -9,6 +9,13 @@ import AVFoundation
 
 class Camera: NSObject, AVCaptureFileOutputRecordingDelegate {
     
+    var isRecording: Bool {
+        if let movieOutput {
+            return movieOutput.isRecording
+        }
+        return false
+    }
+    
     /// The main camera capture session - manages camera input and output
     public private(set) var captureSession: AVCaptureSession?
     
