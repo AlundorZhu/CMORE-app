@@ -29,7 +29,7 @@ class CMOREViewModel: ObservableObject {
     /// Show the visualization overlay in real-time
     @Published var overlay: FrameResult?
     
-    private let camera: Camera
+    public let camera: Camera
     
     /// The URL of the current video being processed (temporary)
     private var currentVideoURL: URL?
@@ -42,7 +42,9 @@ class CMOREViewModel: ObservableObject {
     
     private lazy var captureOutputDelegate: CaptureOutputDelegate = {
         return CaptureOutputDelegate(frameProcessor: self.frameProcessor, forFrameResult: { [weak self] (result: FrameResult) in
-            self?.overlay = result
+            Task { @MainActor in
+                self?.overlay = result
+            }
         })
     }()
     
@@ -59,6 +61,10 @@ class CMOREViewModel: ObservableObject {
         })
         
         self.camera.setupCamera(outputFrameTo: self.captureOutputDelegate, on: self.videoOutputQueue)
+        
+        Task {
+            await self.camera.startCamera()
+        }
     }
     
     /// Clean up when the ViewModel is destroyed
@@ -69,6 +75,7 @@ class CMOREViewModel: ObservableObject {
     /// Toggles video recording on/off (main functionality)
     func toggleRecording() {
         if camera.isRecording {
+            isRecording = false
             camera.stopRecording()
         } else {
             // Create a unique filename for the recorded video
@@ -89,6 +96,7 @@ class CMOREViewModel: ObservableObject {
                     self.showSaveConfirmation = true
                 }
             })
+            isRecording = true
         }
     }
     

@@ -29,7 +29,7 @@ struct CMOREView: View {
 
             // MARK: - Live Preview (fits into available space; no cropping)
             Group {
-                if let session = viewModel.captureSession {
+                if let session = viewModel.camera.captureSession {
                     // Live camera preview with overlay in a ZStack
                     ZStack {
                         CameraPreviewView(session: session)
