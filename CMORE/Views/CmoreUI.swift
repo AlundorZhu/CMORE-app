@@ -9,11 +9,11 @@ import SwiftUI
 
 struct CmoreUI: View {
     
-    init(_ viewModel: VideoStreamViewModel) {
+    init(_ viewModel: CMOREViewModel) {
         self.viewModel = viewModel
     }
     
-    @ObservedObject var viewModel: VideoStreamViewModel
+    @ObservedObject var viewModel: CMOREViewModel
     
     var body: some View {
         HStack{
@@ -79,6 +79,6 @@ struct MovieCaptureButton: View {
 }
 
 #Preview("UI"){
-    CmoreUI(VideoStreamViewModel())
+    CmoreUI(CMOREViewModel())
 }
 

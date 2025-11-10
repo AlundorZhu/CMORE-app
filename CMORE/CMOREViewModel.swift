@@ -16,7 +16,7 @@ import UniformTypeIdentifiers
 /// This class manages camera recording functionality with a simplified interface
 /// It uses the MVVM (Model-View-ViewModel) pattern to separate business logic from UI
 /// SIMPLIFIED: Removed video file loading, automatic camera startup, single recording button
-class VideoStreamViewModel: NSObject, ObservableObject, AVCaptureFileOutputRecordingDelegate {
+class CMOREViewModel: NSObject, ObservableObject, AVCaptureFileOutputRecordingDelegate {
     // MARK: - Published Properties
     // @Published automatically notifies the UI when these values change
     
@@ -296,7 +296,7 @@ class VideoStreamViewModel: NSObject, ObservableObject, AVCaptureFileOutputRecor
 
 // MARK: - AVCaptureVideoDataOutputSampleBufferDelegate
 /// This extension handles camera frame data for face detection processing and video recording
-extension VideoStreamViewModel: AVCaptureVideoDataOutputSampleBufferDelegate {
+extension CMOREViewModel: AVCaptureVideoDataOutputSampleBufferDelegate {
     /// Called for each new camera frame - processes for face detection and records if recording
     /// - Parameters:
     ///   - output: The capture output that produced the frame
@@ -348,7 +348,7 @@ extension VideoStreamViewModel: AVCaptureVideoDataOutputSampleBufferDelegate {
 
 // MARK: - AVCaptureFileOutputRecordingDelegate
 /// This extension handles movie file recording callbacks
-extension VideoStreamViewModel {
+extension CMOREViewModel {
     /// Called when recording starts successfully
     func fileOutput(_ output: AVCaptureFileOutput, didStartRecordingTo fileURL: URL, from connections: [AVCaptureConnection]) {
         print("Started recording to: \(fileURL)")
@@ -371,7 +371,7 @@ extension VideoStreamViewModel {
 }
 
 // MARK: - Video Saving Methods
-extension VideoStreamViewModel {
+extension CMOREViewModel {
     /// Saves the recorded video to the Photos library
     /// - Parameter videoURL: The URL of the recorded video file
     private func saveVideoToPhotosLibrary(_ videoURL: URL) {

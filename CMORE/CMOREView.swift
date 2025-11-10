@@ -13,9 +13,9 @@ import AVFoundation
 ///   without cropping (letterboxes on the short dimension).
 /// - Overlays recording controls and status on top of the preview.
 /// - Keeps face bounding boxes aligned with the preview area.
-struct VideoStreamView: View {
+struct CMOREView: View {
     // View model driving camera and recording state
-    @ObservedObject var viewModel: VideoStreamViewModel
+    @ObservedObject var viewModel: CMOREViewModel
 
     // The target stream aspect ratio (e.g., 1920x1080 = 16:9)
     private var streamAspect: CGFloat {
@@ -59,21 +59,10 @@ struct VideoStreamView: View {
             CmoreUI(viewModel)
         }
         .ignoresSafeArea()
-        // Save/discard confirmation after recording ends
-//        .alert("Save Video?", isPresented: $viewModel.showSaveConfirmation) {
-//            Button("Save to Photos") {
-//                viewModel.saveVideoToPhotos()
-//            }
-//            Button("Discard", role: .destructive) {
-//                viewModel.discardVideo()
-//            }
-//        } message: {
-//            Text("Would you like to save this recorded video to your Photos library or discard it?")
-//        }
     }
 }
 
 // MARK: - Preview
 #Preview {
-    VideoStreamView(viewModel: VideoStreamViewModel())
+    CMOREView(viewModel: CMOREViewModel())
 }
