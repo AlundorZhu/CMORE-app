@@ -25,11 +25,9 @@ actor FrameProcessor {
         case crossed
     }
     
-    // MARK: - Public Properties
-    
     public private(set) var countingBlocks = false
     
-    // MARK: - Private ML Requests
+    private lazy var handedness: HumanHandPoseObservation.Chirality = .right
     
     private let facesRequest = DetectFaceRectanglesRequest()
     
@@ -39,7 +37,6 @@ actor FrameProcessor {
     
     private let boxRequest: CoreMLRequest
     
-    // MARK: - Private Properties
     private var currentBox: BoxDetection?
     
     private var currentState: State = .free
@@ -65,8 +62,10 @@ actor FrameProcessor {
         self.onCrossed = onCross
     }
     
-    func startCountingBlocks() {
+    func startCountingBlocks(for handedness: HumanHandPoseObservation.Chirality, box: BoxDetection) {
+        self.handedness = handedness
         self.countingBlocks = true
+        self.currentBox = box
     }
     
     func stopCountingBlocks() {
@@ -91,8 +90,6 @@ actor FrameProcessor {
             if let boxRequestResult = await box as? [CoreMLFeatureValueObservation],
                 let outputArray = boxRequestResult.first?.featureValue.shapedArrayValue(of: Float.self) {
                     boxDetected = BoxDetector.processKeypointOutput(outputArray)
-                    /// Assume the box doesn't move for the rest of the time
-                    currentBox = boxDetected
                     result.boxDetection = boxDetected
                 }
         
@@ -107,13 +104,22 @@ actor FrameProcessor {
         result.boxDetection = currentBox
         
         async let hands = try? handsRequest.perform(on: ciImage)
-        guard let hands = await hands,
+        guard var hands = await hands,
               hands.count > 0 else {
             
             result.faces = await faces
             return result
         }
         result.hands = hands
+        
+        // Filter all the hands by wrong handedness
+        hands.removeAll(where: { hand in
+            if let chirality = hand.chirality {
+                return chirality != handedness
+            }
+            // keep ones don't have handedness
+            return false
+        })
         
         
         if normalizedScalePerCM == nil {

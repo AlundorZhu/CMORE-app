@@ -7,6 +7,7 @@
 
 import UIKit
 import SwiftUI
+import Vision
 import Collections
 import AVFoundation
 import AudioToolbox
@@ -28,6 +29,9 @@ class CMOREViewModel: NSObject, ObservableObject, AVCaptureFileOutputRecordingDe
     
     /// Show the visualization overlay in real-time
     @Published var overlay: FrameResult?
+    
+    /// Use to help identify which hand we are looking at
+    @Published var handedness: HumanHandPoseObservation.Chirality = .right
     
     /// The main camera capture session - manages camera input and output
     public private(set) var captureSession: AVCaptureSession?
@@ -83,6 +87,19 @@ class CMOREViewModel: NSObject, ObservableObject, AVCaptureFileOutputRecordingDe
             stopRecording()
         } else {
             startRecording()
+        }
+    }
+    
+    func toggleHandedness() {
+        guard !isRecording else {
+            print("Handedness change not allowed after recording started!")
+            return
+        }
+        
+        if handedness == .left {
+            handedness = .right
+        } else {
+            handedness = .left
         }
     }
     
@@ -250,7 +267,7 @@ class CMOREViewModel: NSObject, ObservableObject, AVCaptureFileOutputRecordingDe
         }
 
         // Don't start recording if already recording
-        guard !isRecording else { return }
+        guard !isRecording, overlay != nil, overlay?.boxDetection != nil else { return }
         
         isRecording = true
             
@@ -268,7 +285,7 @@ class CMOREViewModel: NSObject, ObservableObject, AVCaptureFileOutputRecordingDe
         
         // Start the block counting algorithm
         Task {
-            await frameProcessor.startCountingBlocks()
+            await frameProcessor.startCountingBlocks(for: handedness, box: (overlay?.boxDetection)!)
         }
     }
     
