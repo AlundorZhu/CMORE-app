@@ -112,10 +112,17 @@ actor FrameProcessor {
         }
         result.hands = hands
         
+        // MARK: - Filter out the wrong hand
         hands.removeAll { hand in
             return hand.chirality != nil && hand.chirality != handedness
         }
         
+        guard !hands.isEmpty else {
+            result.faces = await faces
+            return result
+        }
+        
+        // MARK: - detect the block
         if normalizedScalePerCM == nil {
             normalizedScalePerCM = calculateScaleToCM(currentBox)
         }
