@@ -11,10 +11,12 @@ struct OverlayView: View {
     
     let geometry: GeometryProxy
     let overlay: FrameResult
+    let handedness: HumanHandPoseObservation.Chirality?
     
-    init(_ overlay: FrameResult, _ geometry: GeometryProxy){
+    init(_ overlay: FrameResult, _ geometry: GeometryProxy, _ handedness: HumanHandPoseObservation.Chirality? = nil){
         self.geometry = geometry
         self.overlay = overlay
+        self.handedness = handedness
     }
     
     var body: some View {
@@ -30,7 +32,10 @@ struct OverlayView: View {
         
         if let hands = overlay.hands {
             ForEach(hands.indices, id: \.self) { i in
-                HandView(geometry, hands[i])
+                let hand = hands[i]
+                let color: Color = (hand.chirality != nil && handedness != hand.chirality) ? .blue : .green
+                
+                HandView(geometry, hand, color: color)
             }
         }
         
@@ -49,10 +54,12 @@ struct HandView: View {
     let geo: GeometryProxy
     let hand: HumanHandPoseObservation
     let normalizedPoints: [NormalizedPoint]
+    let handColor: Color
     
-    init(_ geo: GeometryProxy, _ hand: HumanHandPoseObservation) {
+    init(_ geo: GeometryProxy, _ hand: HumanHandPoseObservation, color: Color = .green) {
         self.geo = geo
         self.hand = hand
+        self.handColor = color
         var landMarks: [NormalizedPoint] = []
         
         for joint in hand.allJoints().values {
@@ -63,7 +70,7 @@ struct HandView: View {
     }
     
     var body: some View {
-        KeypointsView(geo, normalizedPoints)
+        KeypointsView(geo, normalizedPoints, color: handColor)
     }
 }
 

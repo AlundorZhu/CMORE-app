@@ -112,15 +112,9 @@ actor FrameProcessor {
         }
         result.hands = hands
         
-        // Filter all the hands by wrong handedness
-        hands.removeAll(where: { hand in
-            if let chirality = hand.chirality {
-                return chirality != handedness
-            }
-            // keep ones don't have handedness
-            return false
-        })
-        
+        hands.removeAll { hand in
+            return hand.chirality != nil && hand.chirality != handedness
+        }
         
         if normalizedScalePerCM == nil {
             normalizedScalePerCM = calculateScaleToCM(currentBox)

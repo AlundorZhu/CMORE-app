@@ -37,7 +37,7 @@ struct CMOREView: View {
                         // Face bounding boxes overlay, constrained to the same space as camera preview
                         GeometryReader { localGeo in
                             if let overlay = viewModel.overlay {
-                                OverlayView(overlay, localGeo)
+                                OverlayView(overlay, localGeo, viewModel.handedness)
                             }
                         }
                     }
