@@ -41,7 +41,7 @@ actor FrameProcessor {
     
     private var currentState: State = .free
     
-    private var normalizedScalePerCM: Float?
+    private var cmPerPixel: Float?
     
     // MARK: - Public Methods
     
@@ -123,11 +123,11 @@ actor FrameProcessor {
         }
         
         // MARK: - detect the block
-        if normalizedScalePerCM == nil {
-            normalizedScalePerCM = calculateScaleToCM(currentBox)
+        if cmPerPixel == nil {
+            cmPerPixel = calculateScaleToCM(currentBox)
         }
         
-        let blockROI = defineBlockROI(hand: hands.first!, cmPerScale: normalizedScalePerCM!)
+        let blockROI = defineBlockROI(hand: hands.first!, cmPerPixel: cmPerPixel!)
         result.blockROI = blockROI
         
         blocksRequest.regionOfInterest = blockROI
@@ -252,34 +252,31 @@ actor FrameProcessor {
         }
     }
     
+    /// Calculate the cm/px ratio
     private func calculateScaleToCM(_ box: BoxDetection) -> Float {
-        let dividerHeight: Float = 10.0
-        let keypointHeight = Float(box.normalizedKeypoint(for: "Front divider top").y - box.normalizedKeypoint(for: "Front top middle").y)
+        let dividerHeight: Float = 10.0 // cm
+        let keypointHeight = Float(box["Front divider top"][1] - box["Front top middle"][1]) // px
         
         return dividerHeight / keypointHeight
     }
     
-    func defineBlockROI(hand: HumanHandPoseObservation, cmPerScale: Float) -> NormalizedRect {
-        let handBox = hand.boundingBox
-        let blockSize = CGFloat(2.5 / cmPerScale)
+    func defineBlockROI(hand: HumanHandPoseObservation, cmPerPixel: Float) -> NormalizedRect {
+        let handBox = hand.boundingBox // normalized rect
+        let blockSize = CGFloat(2.5 / cmPerPixel)
+        
+        var roi = CGRect()
+        
+        roi.origin.y = handBox.origin.y * CameraSettings.resolution.height - 2 * blockSize
+        roi.size.width = handBox.width * CameraSettings.resolution.width + blockSize * 2
+        roi.size.height = handBox.height * CameraSettings.resolution.height + blockSize * 2
         
         if hand.chirality == .left {
-            return NormalizedRect(
-                x: handBox.origin.x - 2 * blockSize,
-                y: handBox.origin.y - 2 * blockSize,
-                width: handBox.width + blockSize * 2,
-                height: handBox.height + blockSize * 2
-            )
-        } else if hand.chirality == .right {
-            return NormalizedRect(
-                x: handBox.origin.x,
-                y: handBox.origin.y - 2 * blockSize,
-                width: handBox.width + blockSize * 2,
-                height: handBox.height + blockSize * 2
-            )
-        } else {
-            fatalError("Something went wrong with calculating blockROI")
+            roi.origin.x = handBox.origin.x * CameraSettings.resolution.width - 2 * blockSize
         }
+        
+        // right hand don't move the origin.x but extend the width
+        
+        return NormalizedRect(imageRect: roi, in: CameraSettings.resolution)
     }
 }
 
