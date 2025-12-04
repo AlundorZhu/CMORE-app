@@ -17,7 +17,7 @@ import UIKit
 /// Processes frames for face detection and can return frames with bounding boxes drawn
 actor FrameProcessor {
     
-    nonisolated let onCrossed: (() -> Void)
+    nonisolated let onCrossed: (() -> Void) // For sound playing
     
     enum State {
         case free
@@ -34,6 +34,8 @@ actor FrameProcessor {
     private let handsRequest = DetectHumanHandPoseRequest()
     
     private var blocksRequest: CoreMLRequest /// var because the region of interest changes
+    
+    private lazy var blocksRequestDuplicate: CoreMLRequest = self.blocksRequest /// one ROI follows the hand, another follows the block projectory
     
     private let boxRequest: CoreMLRequest
     
@@ -139,7 +141,7 @@ actor FrameProcessor {
         
         currentState = transition(from: currentState, hand: hands.first!, box: currentBox)
         
-//        print("\(currentState)")
+        print("\(currentState)")
         
 //        switch currentState {
 //        case .free:
