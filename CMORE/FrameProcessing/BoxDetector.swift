@@ -9,6 +9,8 @@ import Vision
 import CoreImage
 import UIKit
 
+let INPUTSIZE = CGSize(width: 640, height: 640)
+
 // MARK: - BoxDetector
 
 struct BoxDetector {
@@ -87,7 +89,7 @@ struct BoxDetector {
         return nil
     }
     
-    static func restoreCoordinatesFromScaleToFit(predictionCoord: inout [Float], modelInputSize : CGSize = CGSize(width: 512, height: 512), OriginalImageSize: CGSize = CGSize(width: 1920, height: 1080)){
+    static func restoreCoordinatesFromScaleToFit(predictionCoord: inout [Float], modelInputSize : CGSize = INPUTSIZE, OriginalImageSize: CGSize = CameraSettings.resolution){
         
         // Vision scale longest side to input size
         let scale = min(modelInputSize.width / OriginalImageSize.width, modelInputSize.height/OriginalImageSize.height)
