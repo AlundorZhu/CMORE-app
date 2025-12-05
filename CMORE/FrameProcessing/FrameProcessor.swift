@@ -257,7 +257,11 @@ actor FrameProcessor {
     /// Calculate the cm/px ratio
     private func calculateScaleToCM(_ box: BoxDetection) -> Float {
         let dividerHeight: Float = 10.0 // cm
-        let keypointHeight = Float(box["Front divider top"][1] - box["Front top middle"][1]) // px
+        let keypointHeight = // px
+            hypotf(
+                box["Front divider top"][1] - box["Front top middle"][1],
+                box["Front divider top"][0] - box["Front top middle"][0]
+            )
         
         return dividerHeight / keypointHeight
     }
