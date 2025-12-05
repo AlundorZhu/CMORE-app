@@ -263,17 +263,15 @@ actor FrameProcessor {
     }
     
     func defineBlockROI(hand: HumanHandPoseObservation, cmPerPixel: Float) -> NormalizedRect {
-        let handBox = hand.boundingBox // normalized rect
+        var roi = hand.boundingBox.toImageCoordinates(CameraSettings.resolution)
         let blockSize = CGFloat(2.5 / cmPerPixel)
         
-        var roi = CGRect()
-        
-        roi.origin.y = handBox.origin.y * CameraSettings.resolution.height - 2 * blockSize
-        roi.size.width = handBox.width * CameraSettings.resolution.width + blockSize * 2
-        roi.size.height = handBox.height * CameraSettings.resolution.height + blockSize * 2
+        roi.origin.y -=  blockSize * 2
+        roi.size.width += blockSize * 2
+        roi.size.height += blockSize * 2
         
         if hand.chirality == .left {
-            roi.origin.x = handBox.origin.x * CameraSettings.resolution.width - 2 * blockSize
+            roi.origin.x -= blockSize * 2
         }
         
         // right hand don't move the origin.x but extend the width
