@@ -7,7 +7,6 @@
 
 import Foundation
 import Vision
-import CoreImage
 
 struct FrameResult {
     /// The state at which processing the this frame

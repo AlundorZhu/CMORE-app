@@ -6,13 +6,11 @@
 //
 import CoreML
 import Vision
-import CoreImage
-import UIKit
 
 let INPUTSIZE = CGSize(width: 640, height: 640)
 
 // MARK: - BoxDetector
-
+/// Claude generated
 struct BoxDetector {
     static func createBoxDetector() -> CoreMLModelContainer {
         let model = try? KeypointDetector()
@@ -27,7 +25,7 @@ struct BoxDetector {
         
         return boxDetectorContainer
     }
-        
+    
     
     /// Processes the raw model output to extract keypoints
     static func processKeypointOutput(_ shapedArray: MLShapedArray<Float>, confThresh objectConfThreshold: Float = 0.2, IOUThreshold: Float = 0.5) -> BoxDetection? {
@@ -79,7 +77,7 @@ struct BoxDetector {
         // Return keypoints from the best detection
         if var bestDetection = filteredDetections.first {
             
-//            print("Object confidence: \(bestDetection.objectConf)")
+            //            print("Object confidence: \(bestDetection.objectConf)")
             
             // Normalize the results before returning it
             for idx in bestDetection.keypoints.indices {
@@ -88,7 +86,7 @@ struct BoxDetector {
             return bestDetection
         }
         
-//        print("No box detected!")
+        //        print("No box detected!")
         return nil
     }
     
@@ -108,7 +106,7 @@ struct BoxDetector {
         keypoint.position.y = ((Float(modelInputSize.height) - keypoint.position.y - Float(paddingY))) / Float(scale) // invert y for vision
     }
     
-// MARK: - Private
+    // MARK: - Private
     
     /// Applies Non-Maximum Suppression to filter overlapping detections
     private static func applyNMS(detections: [BoxDetection], iouThreshold: Float) -> [BoxDetection] {
@@ -161,32 +159,6 @@ struct BoxDetector {
         
         return unionArea > 0 ? intersectionArea / unionArea : 0
     }
-    
-//    /// Handles the final detected keypoints
-//    private func handleDetectedKeypoints(_ keypoints: [[Float]]) {
-//        // Process the detected keypoints
-//        print("BoxDetector: Detected \(keypoints.count) keypoints")
-//        
-//        for (index, keypoint) in keypoints.enumerated() {
-//            if keypoint.count >= 3 {
-//                let x = keypoint[0]
-//                let y = keypoint[1]
-//                let confidence = keypoint[2]
-//                
-//                // Only process confident keypoints
-//                if confidence > 0.5 {
-//                    print("Keypoint \(index): x=\(x), y=\(y), confidence=\(confidence)")
-//                    
-//                    // TODO: Add your specific box keypoint processing logic here
-//                    // For example:
-//                    // - Update UI with keypoint positions
-//                    // - Analyze box structure/orientation
-//                    // - Track box movement
-//                    // - etc.
-//                }
-//            }
-//        }
-//    }
 }
 
 // MARK: - Supporting Structures

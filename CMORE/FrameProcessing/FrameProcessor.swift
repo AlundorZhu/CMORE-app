@@ -8,8 +8,6 @@
 import Foundation
 import CoreImage
 import Vision
-import AVFoundation
-import UIKit
 import simd
 
 // MARK: - Frame Processor
