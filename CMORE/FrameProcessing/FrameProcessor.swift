@@ -10,6 +10,7 @@ import CoreImage
 import Vision
 import AVFoundation
 import UIKit
+import simd
 
 // MARK: - Frame Processor
 /// Making it an actor so only one frame get processed at a time
@@ -193,9 +194,9 @@ actor FrameProcessor {
             }
         }
         
-        if oldState == .free && isAbove(of: box["Front divider top"][1], fingerTips) {
+        if oldState == .free && isAbove(of: box["Front divider top"].position.y, fingerTips) {
             return .detecting
-        } else if oldState == .detecting && !isAbove(of: max(box["Back top left"][1], box["Back top right"][1]), fingerTips) {
+        } else if oldState == .detecting && !isAbove(of: max(box["Back top left"].position.y, box["Back top right"].position.y), fingerTips) {
             return .free
         } else if oldState == .detecting && crossed(divider:(box["Front divider top"], box["Front top middle"], box["Back divider top"]), fingerTips, handedness: hand.chirality!) {
             // play a sound
@@ -203,7 +204,7 @@ actor FrameProcessor {
                 self.onCrossed()
             }
             return .crossed
-        } else if oldState == .crossed && !crossed(divider:(box["Front divider top"], box["Front top middle"], box["Back divider top"]), fingerTips, handedness: hand.chirality!) && !isAbove(of: max(box["Back top left"][1], box["Back top right"][1]), fingerTips) {
+        } else if oldState == .crossed && !crossed(divider:(box["Front divider top"], box["Front top middle"], box["Back divider top"]), fingerTips, handedness: hand.chirality!) && !isAbove(of: max(box["Back top left"].position.y, box["Back top right"].position.y), fingerTips) {
             return .free
         } else {
             return oldState
@@ -223,24 +224,50 @@ actor FrameProcessor {
     /// - Parameters:
     ///   - divider: Tuple of three points (front/top, front/middle, back/top) as [x, y] in image space.
     ///   - keypoints: Hand joints to test.
-    private func crossed(divider: ([Float], [Float], [Float]), _ keypoints: [Joint], handedness: HumanHandPoseObservation.Chirality) -> Bool {
+    private func crossed(divider: (Keypoint, Keypoint, Keypoint), _ joints: [Joint], handedness: HumanHandPoseObservation.Chirality) -> Bool {
         let (frontTop, frontMiddle, backTop) = divider
 
         // Compute the divider's x-position for a given y by clamping to the end points
         // and linearly interpolating between them.
         func dividerX(at y: Float) -> Float {
-            if y <= frontTop[1] { return frontTop[0] }
-            if y >= backTop[1] { return backTop[0] }
-            let dx = backTop[0] - frontTop[0]
-            let dy = backTop[1] - frontTop[1]
-            // Avoid division by zero if points are vertically aligned.
-            guard dx > .leastNormalMagnitude else { return frontTop[0] }
-            let m = dy / dx
-            let c = frontTop[1] - m * frontTop[0]
-            return (y - c) / m
+            let start: SIMD2<Float>
+            let end: SIMD2<Float>
+            
+            if y <= frontTop.position.y {
+                // Case A: Top Section
+                start = frontTop.position
+                end = frontMiddle.position
+            }
+            else if y >= backTop.position.y {
+                // Case B: Bottom Section (Parallel Projection)
+                // Vector Math: Calculate direction (B - A) and add to C
+                // No manual loops needed; SIMD handles the subtraction/addition.
+                let direction = frontMiddle.position - frontTop.position
+                
+                start = backTop.position
+                end = backTop.position + direction
+            }
+            else {
+                // Case C: Middle Section
+                start = frontTop.position
+                end = backTop.position
+            }
+            
+            // 2. Solve for X
+            // Calculate vertical progress 't' (0.0 to 1.0)
+            let dy = end.y - start.y
+            
+            // Safety: Avoid division by zero
+            guard abs(dy) > .leastNormalMagnitude else { return start.x }
+            
+            let t = (y - start.y) / dy
+            
+            // 3. Built-in Interpolation
+            // simd_mix(a, b, t) is the hardware-optimized version of "a + (b - a) * t"
+            return simd_mix(start.x, end.x, t)
         }
 
-        return keypoints.contains { joint in
+        return joints.contains { joint in
             let x = Float(joint.location.x * CameraSettings.resolution.width)
             let y = Float(joint.location.y * CameraSettings.resolution.height)
             switch handedness {
@@ -258,10 +285,7 @@ actor FrameProcessor {
     private func calculateScaleToCM(_ box: BoxDetection) -> Float {
         let dividerHeight: Float = 10.0 // cm
         let keypointHeight = // px
-            hypotf(
-                box["Front divider top"][1] - box["Front top middle"][1],
-                box["Front divider top"][0] - box["Front top middle"][0]
-            )
+        distance(box["Front divider top"].position, box["Front top middle"].position)
         
         return dividerHeight / keypointHeight
     }

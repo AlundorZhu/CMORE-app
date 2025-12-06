@@ -58,13 +58,16 @@ struct BoxDetector {
             }
             
             // Extract keypoints (channels 5-34)
-            var keypoints: [[Float]] = []
+            var keypoints: [Keypoint] = []
             for kptIdx in 0..<numKeypoints {
                 let baseChannelIdx = 5 + kptIdx * 3
+                
                 let x = shapedArray[scalarAt: [0, baseChannelIdx, anchorIdx]]
                 let y = shapedArray[scalarAt: [0, baseChannelIdx + 1, anchorIdx]]
                 let conf = shapedArray[scalarAt: [0, baseChannelIdx + 2, anchorIdx]]
-                keypoints.append([x, y, conf])
+                keypoints.append(
+                    Keypoint(confidence: conf, position: SIMD2<Float>(x, y))
+                )
             }
             detection.keypoints = keypoints
             allDetections.append(detection)
@@ -80,7 +83,7 @@ struct BoxDetector {
             
             // Normalize the results before returning it
             for idx in bestDetection.keypoints.indices {
-                restoreCoordinatesFromScaleToFit(predictionCoord: &bestDetection.keypoints[idx])
+                restoreCoordinatesFromScaleToFit(&bestDetection.keypoints[idx])
             }
             return bestDetection
         }
@@ -89,7 +92,7 @@ struct BoxDetector {
         return nil
     }
     
-    static func restoreCoordinatesFromScaleToFit(predictionCoord: inout [Float], modelInputSize : CGSize = INPUTSIZE, OriginalImageSize: CGSize = CameraSettings.resolution){
+    static func restoreCoordinatesFromScaleToFit(_ keypoint: inout Keypoint, modelInputSize : CGSize = INPUTSIZE, OriginalImageSize: CGSize = CameraSettings.resolution) {
         
         // Vision scale longest side to input size
         let scale = min(modelInputSize.width / OriginalImageSize.width, modelInputSize.height/OriginalImageSize.height)
@@ -101,8 +104,8 @@ struct BoxDetector {
         let paddingY = (modelInputSize.height - scaledHeight) / 2.0
         
         // Restore the coordinates
-        predictionCoord[0] = (predictionCoord[0] - Float(paddingX)) / Float(scale)
-        predictionCoord[1] = ((Float(modelInputSize.height) - predictionCoord[1]) - Float(paddingY)) / Float(scale) // invert y for vision
+        keypoint.position.x = (keypoint.position.x - Float(paddingX)) / Float(scale)
+        keypoint.position.y = ((Float(modelInputSize.height) - keypoint.position.y - Float(paddingY))) / Float(scale) // invert y for vision
     }
     
 // MARK: - Private
@@ -194,19 +197,24 @@ struct BoxDetection {
     var width: Float = 0
     var height: Float = 0
     var objectConf: Float = 0
-    var keypoints: [[Float]] = []
+    var keypoints: [Keypoint] = []
     
     private let keypointNames: [String] = ["Front top left", "Front bottom left", "Front top middle", "Front bottom middle", "Front top right", "Front bottom right", "Back divider top", "Front divider top", "Back top left", "Back top right"]
     
-    subscript(name: String) -> [Float] {
+    subscript(name: String) -> Keypoint {
         let idx = keypointNames.firstIndex(of: name)!
         return keypoints[idx]
     }
     
     func normalizedKeypoint(for name: String) -> NormalizedPoint{
         return NormalizedPoint(
-            x: CGFloat(self[name][0]) / CameraSettings.resolution.width,
-            y: CGFloat(self[name][1]) / CameraSettings.resolution.height
+            x: CGFloat(self[name].position.x) / CameraSettings.resolution.width,
+            y: CGFloat(self[name].position.y) / CameraSettings.resolution.height
         )
     }
+}
+
+struct Keypoint {
+    let confidence: Float
+    var position: SIMD2<Float>
 }

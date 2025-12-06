@@ -87,7 +87,7 @@ struct BoxView: View {
         var normalizedPoints = [NormalizedPoint]()
         for keypoint in box.keypoints {
             let normalizedPoint = NormalizedPoint(
-                imagePoint: CGPoint(x: CGFloat(keypoint[0]), y: CGFloat(keypoint[1])),
+                imagePoint: CGPoint(x: CGFloat(keypoint.position.x), y: CGFloat(keypoint.position.y)),
                 in: CameraSettings.resolution
             )
             normalizedPoints.append(normalizedPoint)
