@@ -34,16 +34,20 @@ struct OverlayView: View {
             ForEach(hands.indices, id: \.self) { i in
                 let hand = hands[i]
                 let color: Color = (hand.chirality != nil && handedness != hand.chirality) ? .blue : .green
-                
                 HandView(geometry, hand, color: color)
             }
         }
         
-        if let blockROI = overlay.blockROI {
-            BoundingBoxView(geometry, blockROI)
-            if let blocks = overlay.blocks {
-                ForEach(blocks.indices, id: \.self) { i in
-                    BoundingBoxView(geometry, blocks[i], from: blockROI)
+        if let blockROIs = overlay.blocks {
+            ForEach(blockROIs.indices, id: \.self) { i in
+                let blockROI = blockROIs[i]
+                BoundingBoxView(geometry, blockROI.ROI)
+                
+                if let objects = blockROI.objects {
+                    ForEach(objects.indices, id: \.self) { j in
+                        let object = objects[j]
+                        BoundingBoxView(geometry, object, from: blockROI.ROI)
+                    }
                 }
             }
         }

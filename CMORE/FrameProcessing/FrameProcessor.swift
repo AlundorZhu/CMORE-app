@@ -9,6 +9,7 @@ import Foundation
 import CoreImage
 import Vision
 import simd
+import OrderedCollections
 
 // MARK: - Frame Processor
 /// Making it an actor so only one frame get processed at a time
@@ -37,6 +38,8 @@ actor FrameProcessor {
     private lazy var blocksRequestDuplicate: CoreMLRequest = self.blocksRequest /// one ROI follows the hand, another follows the block projectory
     
     private let boxRequest: CoreMLRequest
+    
+    private lazy var results: OrderedDictionary<CMTime, FrameResult> = .init()
     
     private var currentBox: BoxDetection?
     
@@ -75,9 +78,11 @@ actor FrameProcessor {
     
     /// Processes a single frame from the camera or video
     /// - Parameter ciImage: The frame to process as a Core Image
-    func processFrame(_ pixelBuffer: CVImageBuffer) async -> FrameResult {
+    func processFrame(_ pixelBuffer: CVImageBuffer, time timestamp: CMTime) async -> FrameResult {
         
         var result = FrameResult(processingState: currentState)
+        
+        defer { results[timestamp] = result }
         
         let ciImage = CIImage(cvPixelBuffer: pixelBuffer)
         async let faces = try? facesRequest.perform(on: ciImage)
@@ -128,49 +133,29 @@ actor FrameProcessor {
             cmPerPixel = calculateScaleToCM(currentBox)
         }
         
-        let blockROI = defineBlockROI(hand: hands.first!, cmPerPixel: cmPerPixel!)
-        result.blockROI = blockROI
-        
-        blocksRequest.regionOfInterest = blockROI
-        
-        let blocks = try? await blocksRequest.perform(on: ciImage)
-        if let blocks = blocks as? [RecognizedObjectObservation], !blocks.isEmpty {
-            result.blocks = blocks
-        }
-        
-        currentState = transition(from: currentState, hand: hands.first!, box: currentBox)
+        currentState = transition(by: hands.first!)
         
         print("\(currentState)")
         
-//        switch currentState {
-//        case .free:
-//            guard let hands = await hands,
-//                  hands.count > 0 else {
-//                return nil
-//            }
-//            
-//            guard let currentBox = currentBox else {
-//                return nil
-//            }
-//            
-//            currentState = transition(from: currentState, hand: hands.first!, box: currentBox)
-//            
-//            print("\(currentState)")
-//            
-//        case .detecting:
-//            guard let hands = await hands,
-//                  hands.count > 0 else {
-//                return nil
-//            }
-//            
-//            guard let currentBox = currentBox else {
-//                return nil
-//            }
-//            
-//            currentState = transition(from: currentState, hand: hands.first!, box: currentBox)
-//            
-//            print("\(currentState)")
-//        }
+        switch currentState {
+        case .detecting: // look for block around the hand
+            
+            var handROI = Block(ROI: defineBlockROI(hand: hands.first!, cmPerPixel: cmPerPixel!))
+            
+            blocksRequest.regionOfInterest = handROI.ROI
+            
+            let blocks = try? await blocksRequest.perform(on: ciImage)
+            if let blocks = blocks as? [RecognizedObjectObservation], !blocks.isEmpty {
+                handROI.objects = blocks
+            }
+            
+            result.blocks = [handROI]
+            
+//        case .crossed: // plus roi follow block
+            
+        default:
+            break
+        }
         
         result.faces = await faces
         return result
@@ -179,7 +164,7 @@ actor FrameProcessor {
     
     // MARK: - Private Methods
     
-    private func transition(from oldState: State, hand: HumanHandPoseObservation, box: BoxDetection) -> State {
+    private func transition(by hand: HumanHandPoseObservation) -> State {
         let allJoints = hand.allJoints()
         let jointNames: [HumanHandPoseObservation.JointName] = [.thumbTip, .indexTip, .middleTip, .ringTip, .littleTip]
         var fingerTips: [Joint] = []
@@ -192,20 +177,25 @@ actor FrameProcessor {
             }
         }
         
-        if oldState == .free && isAbove(of: box["Front divider top"].position.y, fingerTips) {
+        if currentState == .free &&
+            isAbove(of: currentBox!["Front divider top"].position.y, fingerTips) {
             return .detecting
-        } else if oldState == .detecting && !isAbove(of: max(box["Back top left"].position.y, box["Back top right"].position.y), fingerTips) {
+        } else if currentState == .detecting &&
+                    !isAbove(of: max(currentBox!["Back top left"].position.y, currentBox!["Back top right"].position.y), fingerTips) {
             return .free
-        } else if oldState == .detecting && crossed(divider:(box["Front divider top"], box["Front top middle"], box["Back divider top"]), fingerTips, handedness: hand.chirality!) {
+        } else if currentState == .detecting &&
+                    crossed(divider:(currentBox!["Front divider top"], currentBox!["Front top middle"], currentBox!["Back divider top"]), fingerTips, handedness: hand.chirality!) {
             // play a sound
             Task { @MainActor in
                 self.onCrossed()
             }
             return .crossed
-        } else if oldState == .crossed && !crossed(divider:(box["Front divider top"], box["Front top middle"], box["Back divider top"]), fingerTips, handedness: hand.chirality!) && !isAbove(of: max(box["Back top left"].position.y, box["Back top right"].position.y), fingerTips) {
+        } else if currentState == .crossed &&
+                    !crossed(divider:(currentBox!["Front divider top"], currentBox!["Front top middle"], currentBox!["Back divider top"]), fingerTips, handedness: hand.chirality!) &&
+                    !isAbove(of: max(currentBox!["Back top left"].position.y, currentBox!["Back top right"].position.y), fingerTips) {
             return .free
         } else {
-            return oldState
+            return currentState
         }
     }
     

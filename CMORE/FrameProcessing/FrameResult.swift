@@ -8,14 +8,18 @@
 import Foundation
 import Vision
 
+struct Block {
+    let ROI: NormalizedRect
+    var objects: [RecognizedObjectObservation]?
+}
+
 struct FrameResult {
     /// The state at which processing the this frame
     let processingState: FrameProcessor.State
     var faces: [BoundingBoxProviding]?
     var boxDetection: BoxDetection?
     var hands: [HumanHandPoseObservation]?
-    var blockROI: NormalizedRect?
-    var blocks: [RecognizedObjectObservation]?
+    var blocks: [Block]?
 }
 
 extension HumanHandPoseObservation : @retroactive BoundingBoxProviding {

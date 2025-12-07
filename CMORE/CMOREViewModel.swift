@@ -349,7 +349,7 @@ extension CMOREViewModel: AVCaptureVideoDataOutputSampleBufferDelegate {
         // Process the frame
         Task {
 
-            let processedResult = await frameProcessor.processFrame(pixelBuffer)
+            let processedResult = await frameProcessor.processFrame(pixelBuffer, time: currentTime)
             
             await MainActor.run {
                 self.overlay = processedResult
