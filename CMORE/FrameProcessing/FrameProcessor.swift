@@ -11,6 +11,13 @@ import Vision
 import simd
 import OrderedCollections
 
+extension HumanHandPoseObservation {
+    var fingerTips: [Joint] {
+        [.thumbTip, .indexTip, .middleTip, .ringTip, .littleTip]
+            .compactMap { joint(for: $0) }
+    }
+}
+
 // MARK: - Frame Processor
 /// Making it an actor so only one frame get processed at a time
 /// Handles processing of individual video frames from the camera or video files
@@ -79,7 +86,9 @@ actor FrameProcessor {
     }
     
     /// Processes a single frame from the camera or video
-    /// - Parameter ciImage: The frame to process as a Core Image
+    /// - Parameters:
+    ///     - pixelBuffer: The frame to process
+    ///     - timestamp: The presentation time of the frame
     func processFrame(_ pixelBuffer: CVImageBuffer, time timestamp: CMTime) async -> FrameResult {
         
         var result = FrameResult(processingState: currentState)
@@ -189,50 +198,36 @@ actor FrameProcessor {
     // MARK: - Private Methods
     
     private func transition(by hand: HumanHandPoseObservation) -> State {
-        let allJoints = hand.allJoints()
-        let jointNames: [HumanHandPoseObservation.JointName] = [.thumbTip, .indexTip, .middleTip, .ringTip, .littleTip]
-        var fingerTips: [Joint] = []
         
-        for jointName in jointNames {
-            
-            /// was going to just use the fingerTips if the joint(for:) func isn't broken
-            if let joint = allJoints[jointName] {
-                fingerTips.append(joint)
+        switch currentState {
+        case .free: /// free -> detecting
+            if isAbove(of: currentBox!["Front divider top"].position.y, hand.fingerTips) {
+                return .detecting
+            }
+        case .crossedBack:
+            fallthrough
+            /// crossed back -> free
+            /// crossed back -> crossed
+        case .detecting:
+            /// detecting -> free
+            if !isAbove(of: max(currentBox!["Back top left"].position.y, currentBox!["Back top right"].position.y), hand.fingerTips) {
+                return .free
+            }
+            /// detecting -> crossed
+            if crossed(divider:(currentBox!["Front divider top"], currentBox!["Front top middle"], currentBox!["Back divider top"]), hand.fingerTips, handedness: hand.chirality!) {
+                // play a sound
+                Task { @MainActor in
+                    self.onCrossed()
+                }
+                return .crossed
+            }
+        case .crossed:
+            if !crossed(divider:(currentBox!["Front divider top"], currentBox!["Front top middle"], currentBox!["Back divider top"]), hand.fingerTips, handedness: hand.chirality!) {
+                return .crossedBack
             }
         }
         
-        /// free -> detecting
-        if currentState == .free &&
-            isAbove(of: currentBox!["Front divider top"].position.y, fingerTips) {
-            return .detecting
-        
-        /// detecting -> free
-        } else if currentState == .detecting &&
-                    !isAbove(of: max(currentBox!["Back top left"].position.y, currentBox!["Back top right"].position.y), fingerTips) {
-            return .free
-            
-        /// detecting -> crossed
-        } else if currentState == .detecting &&
-                    crossed(divider:(currentBox!["Front divider top"], currentBox!["Front top middle"], currentBox!["Back divider top"]), fingerTips, handedness: hand.chirality!) {
-            // play a sound
-            Task { @MainActor in
-                self.onCrossed()
-            }
-            return .crossed
-            
-        /// crossed -> crossed back
-        } else if currentState == .crossed &&
-                    !crossed(divider:(currentBox!["Front divider top"], currentBox!["Front top middle"], currentBox!["Back divider top"]), fingerTips, handedness: hand.chirality!) {
-            return .crossedBack
-            
-        /// crossed back -> free
-        } else if currentState == .crossedBack &&
-                    !isAbove(of: max(currentBox!["Back top left"].position.y, currentBox!["Back top right"].position.y), fingerTips) {
-            return .free
-            
-        } else {
-            return currentState
-        }
+        return currentState
     }
     
     private func isAbove(of horizon: Float, _ keypoints: [Joint]) -> Bool {
@@ -334,17 +329,6 @@ actor FrameProcessor {
     }
     
     func followBlockROI(awayFrom hand: HumanHandPoseObservation) -> NormalizedRect? {
-        let allJoints = hand.allJoints()
-        let jointNames: [HumanHandPoseObservation.JointName] = [.thumbTip, .indexTip, .middleTip, .ringTip, .littleTip]
-        var fingerTips: [Joint] = []
-        
-        for jointName in jointNames {
-            
-            /// was going to just use the fingerTips if the joint(for:) func isn't broken
-            if let joint = allJoints[jointName] {
-                fingerTips.append(joint)
-            }
-        }
         
         if results.count < 3 {
             return nil
@@ -380,20 +364,20 @@ actor FrameProcessor {
         // extend the mid point to roi
         let blockSize = 2.5 / cmPerPixel!
         
-        for joint in fingerTips {
-            if distance(average, SIMD2<Double>(x: joint.location.x * CameraSettings.resolution.width, y: joint.location.y * CameraSettings.resolution.height)) > 0.5 * Double(blockSize) {
-                
-                let x: Double = average.x - Double(2 * blockSize)
-                let y: Double = average.y - Double(2 * blockSize)
-                let width: Double = average.x + Double(2 * blockSize) - x
-                let heigh: Double = average.y + Double(2 * blockSize) - y
-                
-                let rect = CGRect(x: x, y: y, width: width, height: heigh)
-                
-                return NormalizedRect(imageRect: rect, in: CameraSettings.resolution)
+        for joint in hand.fingerTips {
+            if distance(average, SIMD2<Double>(x: joint.location.x * CameraSettings.resolution.width, y: joint.location.y * CameraSettings.resolution.height)) < 0.5 * Double(blockSize) {
+                return nil
             }
         }
-        return nil
+        
+        let x: Double = average.x - Double(2 * blockSize)
+        let y: Double = average.y - Double(2 * blockSize)
+        let width: Double = average.x + Double(2 * blockSize) - x
+        let heigh: Double = average.y + Double(2 * blockSize) - y
+        
+        let rect = CGRect(x: x, y: y, width: width, height: heigh)
+        
+        return NormalizedRect(imageRect: rect, in: CameraSettings.resolution)
     }
 }
 
