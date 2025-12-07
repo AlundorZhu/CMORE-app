@@ -28,8 +28,6 @@ actor FrameProcessor {
     
     public private(set) var countingBlocks = false
     
-    private lazy var handedness: HumanHandPoseObservation.Chirality = .right
-    
     private let facesRequest = DetectFaceRectanglesRequest()
     
     private let handsRequest = DetectHumanHandPoseRequest()
@@ -40,13 +38,16 @@ actor FrameProcessor {
     
     private let boxRequest: CoreMLRequest
     
-    private lazy var results: OrderedDictionary<CMTime, FrameResult> = .init()
+    // MARK: - Stateful properties
+    private var results: OrderedDictionary<CMTime, FrameResult> = .init()
     
     private var currentBox: BoxDetection?
     
     private var currentState: State = .free
     
     private var cmPerPixel: Float?
+    
+    private var handedness: HumanHandPoseObservation.Chirality = .right // none nil default
     
     // MARK: - Public Methods
     
