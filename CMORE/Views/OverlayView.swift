@@ -38,16 +38,13 @@ struct OverlayView: View {
             }
         }
         
-        if let blockROIs = overlay.blocks {
-            ForEach(blockROIs.indices, id: \.self) { i in
-                let blockROI = blockROIs[i]
-                BoundingBoxView(geometry, blockROI.ROI)
-                
-                if let objects = blockROI.objects {
-                    ForEach(objects.indices, id: \.self) { j in
-                        let object = objects[j]
-                        BoundingBoxView(geometry, object, from: blockROI.ROI)
-                    }
+        if let blocks = overlay.blocks {
+            BoundingBoxView(geometry, blocks.ROI)
+            
+            if let objects = blocks.objects {
+                ForEach(objects.indices, id: \.self) { j in
+                    let object = objects[j]
+                    BoundingBoxView(geometry, object, from: blocks.ROI)
                 }
             }
         }

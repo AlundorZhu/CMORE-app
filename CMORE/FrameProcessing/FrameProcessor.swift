@@ -35,7 +35,7 @@ actor FrameProcessor {
     
     private var blocksRequest: CoreMLRequest /// var because the region of interest changes
     
-    private lazy var blocksRequestDuplicate: CoreMLRequest = self.blocksRequest /// one ROI follows the hand, another follows the block projectory
+//    private lazy var blocksRequestDuplicate: CoreMLRequest = self.blocksRequest /// one ROI follows the hand, another follows the block projectory
     
     private let boxRequest: CoreMLRequest
     
@@ -138,20 +138,42 @@ actor FrameProcessor {
         print("\(currentState)")
         
         switch currentState {
+        case .free:
+            break
+            
         case .detecting: // look for block around the hand
             
-            var handROI = Block(ROI: defineBlockROI(hand: hands.first!, cmPerPixel: cmPerPixel!))
+            var handROI = Blocks(ROI: defineBlockROI(by: hands.first!, cmPerPixel: cmPerPixel!))
             
             blocksRequest.regionOfInterest = handROI.ROI
             
-            let blocks = try? await blocksRequest.perform(on: ciImage)
-            if let blocks = blocks as? [RecognizedObjectObservation], !blocks.isEmpty {
+            async let blocksAroundHand = try? blocksRequest.perform(on: ciImage)
+            if let blocks = await blocksAroundHand as? [RecognizedObjectObservation], !blocks.isEmpty {
                 handROI.objects = blocks
             }
             
-            result.blocks = [handROI]
+            result.blocks = handROI
             
-//        case .crossed: // plus roi follow block
+        case .crossed: // plus roi follow block
+            
+            var ROI: NormalizedRect
+            if let awayROI = followBlockROI(awayFrom: hands.first!) {
+                ROI = awayROI
+            } else {
+                ROI = defineBlockROI(by: hands.first!, cmPerPixel: cmPerPixel!)
+            }
+            
+            
+            blocksRequest.regionOfInterest = ROI
+            
+            var blockROI = Blocks(ROI: ROI)
+            
+            async let blocksAroundHand = try? blocksRequest.perform(on: ciImage)
+            if let blocks = await blocksAroundHand as? [RecognizedObjectObservation], !blocks.isEmpty {
+                blockROI.objects = blocks
+            }
+            
+            result.blocks = blockROI
             
         default:
             break
@@ -278,7 +300,9 @@ actor FrameProcessor {
         return dividerHeight / keypointHeight
     }
     
-    func defineBlockROI(hand: HumanHandPoseObservation, cmPerPixel: Float) -> NormalizedRect {
+    /// Calculate the region of interest for block detection
+    /// Define ROI by hand
+    func defineBlockROI(by hand: HumanHandPoseObservation, cmPerPixel: Float) -> NormalizedRect {
         var roi = hand.boundingBox.toImageCoordinates(CameraSettings.resolution)
         let blockSize = CGFloat(2.5 / cmPerPixel)
         
@@ -293,6 +317,69 @@ actor FrameProcessor {
         // right hand don't move the origin.x but extend the width
         
         return NormalizedRect(imageRect: roi, in: CameraSettings.resolution)
+    }
+    
+    func followBlockROI(awayFrom hand: HumanHandPoseObservation) -> NormalizedRect? {
+        let allJoints = hand.allJoints()
+        let jointNames: [HumanHandPoseObservation.JointName] = [.thumbTip, .indexTip, .middleTip, .ringTip, .littleTip]
+        var fingerTips: [Joint] = []
+        
+        for jointName in jointNames {
+            
+            /// was going to just use the fingerTips if the joint(for:) func isn't broken
+            if let joint = allJoints[jointName] {
+                fingerTips.append(joint)
+            }
+        }
+        
+        if results.count < 3 {
+            return nil
+        }
+        
+        // calculate the running average of block centers
+        var boxes: [CGRect] = []
+        // in the last 3 framesResults
+        for i in 0..<3 {
+            let lastResult = results.elements[results.count - i - 1].value
+            guard let blocks = lastResult.blocks,
+                  let objects = blocks.objects,
+                  !objects.isEmpty
+            else {
+                return nil
+            }
+            
+            for object in objects {
+                let box = object.boundingBox.toImageCoordinates(from: blocks.ROI, imageSize: CameraSettings.resolution)
+                boxes.append(box)
+            }
+        }
+        
+        var average: SIMD2<Double> = .zero
+        for box in boxes {
+            average.x += Double(box.midX)
+            average.y += Double(box.midY)
+        }
+        
+        average.x /= Double(boxes.count)
+        average.y /= Double(boxes.count)
+        
+        // extend the mid point to roi
+        let blockSize = 2.5 / cmPerPixel!
+        
+        for joint in fingerTips {
+            if distance(average, SIMD2<Double>(x: joint.location.x * CameraSettings.resolution.width, y: joint.location.y * CameraSettings.resolution.height)) > 0.5 * Double(blockSize) {
+                
+                let x: Double = average.x - Double(2 * blockSize)
+                let y: Double = average.y - Double(2 * blockSize)
+                let width: Double = average.x + Double(2 * blockSize) - x
+                let heigh: Double = average.y + Double(2 * blockSize) - y
+                
+                let rect = CGRect(x: x, y: y, width: width, height: heigh)
+                
+                return NormalizedRect(imageRect: rect, in: CameraSettings.resolution)
+            }
+        }
+        return nil
     }
 }
 
