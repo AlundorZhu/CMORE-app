@@ -23,6 +23,7 @@ actor FrameProcessor {
         case free
         case detecting
         case crossed
+        case crossedBack
     }
     
     public private(set) var countingBlocks = false
@@ -199,12 +200,17 @@ actor FrameProcessor {
             }
         }
         
+        /// free -> detecting
         if currentState == .free &&
             isAbove(of: currentBox!["Front divider top"].position.y, fingerTips) {
             return .detecting
+        
+        /// detecting -> free
         } else if currentState == .detecting &&
                     !isAbove(of: max(currentBox!["Back top left"].position.y, currentBox!["Back top right"].position.y), fingerTips) {
             return .free
+            
+        /// detecting -> crossed
         } else if currentState == .detecting &&
                     crossed(divider:(currentBox!["Front divider top"], currentBox!["Front top middle"], currentBox!["Back divider top"]), fingerTips, handedness: hand.chirality!) {
             // play a sound
@@ -212,10 +218,17 @@ actor FrameProcessor {
                 self.onCrossed()
             }
             return .crossed
+            
+        /// crossed -> crossed back
         } else if currentState == .crossed &&
-                    !crossed(divider:(currentBox!["Front divider top"], currentBox!["Front top middle"], currentBox!["Back divider top"]), fingerTips, handedness: hand.chirality!) &&
+                    !crossed(divider:(currentBox!["Front divider top"], currentBox!["Front top middle"], currentBox!["Back divider top"]), fingerTips, handedness: hand.chirality!) {
+            return .crossedBack
+            
+        /// crossed back -> free
+        } else if currentState == .crossedBack &&
                     !isAbove(of: max(currentBox!["Back top left"].position.y, currentBox!["Back top right"].position.y), fingerTips) {
             return .free
+            
         } else {
             return currentState
         }
