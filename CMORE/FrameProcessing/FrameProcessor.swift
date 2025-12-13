@@ -18,10 +18,183 @@ extension HumanHandPoseObservation {
     }
 }
 
+// MARK: - constants safe to parallel
 fileprivate let handsRequest = DetectHumanHandPoseRequest()
 fileprivate let facesRequest = DetectFaceRectanglesRequest()
-fileprivate var blockDetector = BlockDetector()
+fileprivate let blockDetector = BlockDetector()
+fileprivate let boxRequest = BoxDetector.createBoxDetectionRequest()
 
+// MARK: - Pure functions
+/// Returns true if any joints if above the horizon. Assume y increase upwards
+fileprivate func isAbove(of horizon: Float, _ keypoints: [Joint]) -> Bool {
+    for joint in keypoints {
+        if Float(joint.location.y * CameraSettings.resolution.height) > horizon {
+            return true
+        }
+    }
+    return false
+}
+
+/// Returns true if the block is above the wrist and on the right side of left hand (vice versa)
+fileprivate func isInvalidBlock(_ block: RecognizedObjectObservation, _ roi: NormalizedRect, basedOn hand: HumanHandPoseObservation?, _ handedness: HumanHandPoseObservation.Chirality) -> Bool {
+    guard let hand = hand else {
+        return false
+    }
+    
+    // invalid - above the wrist and left/right of the MCPs
+    var blockPixel = block.boundingBox.toImageCoordinates(from: roi, imageSize: CameraSettings.resolution)
+    
+    guard let wristY = hand.joint(for: .wrist)?.location.y else { return false }
+    
+    if blockPixel.midY < wristY * CameraSettings.resolution.height {
+        return false
+    }
+    
+    let mcps: [Joint] = [.indexMCP, .middleMCP, .ringMCP, .littleMCP].compactMap {
+        hand.joint(for: $0)
+    }
+    
+    for joint in mcps {
+        
+        switch handedness {
+        case .left:
+            if joint.location.x < blockPixel.midX { return false }
+        case .right:
+            if joint.location.x > blockPixel.midX { return false }
+            
+        @unknown default:
+            fatalError("Unknow handedness")
+        }
+        
+    }
+    
+    return true
+}
+
+/// Linear projection of the hand box
+fileprivate func projectHandBox(past results: [OrderedDictionary<CMTime, FrameResult>.Element], now currentTime: CMTime) -> CGRect {
+    let lastResult = results.last!
+    let firstResult = results.first!
+    
+    guard (lastResult.key - firstResult.key) < CMTime(value: 1, timescale: 2) else { // make sure results are not more than half seconds apart
+        fatalError("Fail to project hand box: time interval too large")
+    }
+    
+    var handBox = lastResult.value.hands!.first!.boundingBox.toImageCoordinates(CameraSettings.resolution)
+    let deltaTime = lastResult.key - firstResult.key
+    let deltaX = handBox.origin.x - firstResult.value.hands!.first!.boundingBox.origin.x
+    let deltaY = handBox.origin.y - firstResult.value.hands!.first!.boundingBox.origin.y
+    
+    // project the new origin
+    handBox.origin.x += deltaX / deltaTime.seconds * (currentTime - lastResult.key).seconds
+    handBox.origin.y += deltaY / deltaTime.seconds * (currentTime - lastResult.key).seconds
+    
+    return handBox
+}
+
+/// Calculate the region of interest for block detection
+/// Define ROI by hand
+fileprivate func defineBlockROI(by handBox: CGRect, _ box: BoxDetection, _ chirality: HumanHandPoseObservation.Chirality) -> NormalizedRect {
+    var roi = handBox
+    let blockSize = CGFloat(blockLengthInPixels(scale: box.cmPerPixel))
+    
+    roi.origin.y -=  blockSize * 2
+    roi.size.width += blockSize * 2
+    roi.size.height += blockSize * 2
+    
+    if chirality == .left {
+        roi.origin.x -= blockSize * 2
+    }
+    
+    // right hand don't move the origin.x but extend the width
+    
+    return NormalizedRect(imageRect: roi, in: CameraSettings.resolution)
+}
+
+/// Returns true if any fingertip crosses the divider polyline.
+/// - Parameters:
+///   - divider: Tuple of three points (front/top, front/middle, back/top) as [x, y] in image space.
+///   - keypoints: Hand joints to test.
+fileprivate func crossed(divider: (Keypoint, Keypoint, Keypoint), _ joints: [Joint], handedness: HumanHandPoseObservation.Chirality) -> Bool {
+    let (frontTop, frontMiddle, backTop) = divider
+
+    // Compute the divider's x-position for a given y by clamping to the end points
+    // and linearly interpolating between them.
+    func dividerX(at y: Float) -> Float {
+        let start: SIMD2<Float>
+        let end: SIMD2<Float>
+        
+        if y <= frontTop.position.y {
+            // Case A: Top Section
+            start = frontTop.position
+            end = frontMiddle.position
+        }
+        else if y >= backTop.position.y {
+            // Case B: Bottom Section (Parallel Projection)
+            // Vector Math: Calculate direction (B - A) and add to C
+            // No manual loops needed; SIMD handles the subtraction/addition.
+            let direction = frontMiddle.position - frontTop.position
+            
+            start = backTop.position
+            end = backTop.position + direction
+        }
+        else {
+            // Case C: Middle Section
+            start = frontTop.position
+            end = backTop.position
+        }
+        
+        // 2. Solve for X
+        // Calculate vertical progress 't' (0.0 to 1.0)
+        let dy = end.y - start.y
+        
+        // Safety: Avoid division by zero
+        guard abs(dy) > .leastNormalMagnitude else { return start.x }
+        
+        let t = (y - start.y) / dy
+        
+        // 3. Built-in Interpolation
+        // simd_mix(a, b, t) is the hardware-optimized version of "a + (b - a) * t"
+        return simd_mix(start.x, end.x, t)
+    }
+
+    return joints.contains { joint in
+        let x = Float(joint.location.x * CameraSettings.resolution.width)
+        let y = Float(joint.location.y * CameraSettings.resolution.height)
+        switch handedness {
+            case .left:
+                return x < dividerX(at: y)
+            case .right:
+                return x > dividerX(at: y)
+            @unknown default:
+                fatalError("Unknown handedness")
+        }
+    }
+}
+
+/// Calculate the running average of past block bounding box centers
+fileprivate func runningAverage(_ detections: [BlockDetection]) -> CGPoint? {
+    var totalX: CGFloat = 0
+    var totalY: CGFloat = 0
+    var count: CGFloat = 0
+
+    for detection in detections {
+        // Iterate only if objects exist
+        guard let objects = detection.objects else { continue }
+        
+        for object in objects {
+            let block = object.boundingBox.toImageCoordinates(from: detection.ROI, imageSize: CameraSettings.resolution)
+            totalX += block.midX
+            totalY += block.midY
+            count += 1
+        }
+    }
+
+    // Avoid division by zero
+    guard count > 0 else { return nil }
+
+    return CGPoint(x: totalX / count, y: totalY / count)
+}
 
 // MARK: - Frame Processor
 /// Making it an actor so only one frame get processed at a time
@@ -41,8 +214,6 @@ actor FrameProcessor {
     // MARK: - Stateful properties
     public private(set) var countingBlocks = false
     
-    private let boxRequest: CoreMLRequest
-    
     private var results: OrderedDictionary<CMTime, FrameResult> = .init()
     
     private var currentBox: BoxDetection?
@@ -54,13 +225,6 @@ actor FrameProcessor {
     // MARK: - Public Methods
     
     init(onCross: @escaping () -> Void) {
-        
-        /// Craft the boxDetection request
-        let keypointModelContainer = BoxDetector.createBoxDetector()
-        var request = CoreMLRequest(model: keypointModelContainer)
-        request.cropAndScaleAction = .scaleToFit
-        self.boxRequest = request
-        
         /// When crossing the bivider
         self.onCrossed = onCross
     }
@@ -152,11 +316,11 @@ actor FrameProcessor {
                 }
                 
                 let handBox = projectHandBox(past: last2Hands, now: timestamp)
-                roi = defineBlockROI(by: handBox, cmPerPixel: currentBox.cmPerPixel, chirality: handedness)
+                roi = defineBlockROI(by: handBox, currentBox, handedness)
                 
             } else {
                 
-                roi = defineBlockROI(by: hands.first!.boundingBox.toImageCoordinates(CameraSettings.resolution), cmPerPixel: currentBox.cmPerPixel, chirality: handedness)
+                roi = defineBlockROI(by: hands.first!.boundingBox.toImageCoordinates(CameraSettings.resolution), currentBox, handedness)
             }
             
             blockROIs.append(roi)
@@ -173,7 +337,14 @@ actor FrameProcessor {
         
         // MARK: - Detect n Process the blocks
         for await blockDetection in blockDetector.perforAll(on: ciImage, in: blockROIs) {
-            result.blockDetections.append(blockDetection)
+            var allBlocks = blockDetection
+            if var objects = allBlocks.objects {
+                objects.removeAll { block in
+                    isInvalidBlock(block, allBlocks.ROI, basedOn: hands.first, handedness)
+                }
+                allBlocks.objects = objects
+            }
+            result.blockDetections.append(allBlocks)
         }
         
         guard !hands.isEmpty else { // state transistion requires hand detected
@@ -189,7 +360,6 @@ actor FrameProcessor {
         return result
     }
     
-    
     // MARK: - Private Methods
     
     // Return ROI for detecting blocks by past running average
@@ -204,26 +374,6 @@ actor FrameProcessor {
               let awayROICenter = runningAverage(pastBlockDetection) else { return nil }
         
         return followBlockROI(roiCenter: awayROICenter, awayFrom: hand)
-    }
-    
-    private func projectHandBox(past results: [OrderedDictionary<CMTime, FrameResult>.Element], now currentTime: CMTime) -> CGRect {
-        let lastResult = results.last!
-        let firstResult = results.first!
-        
-        guard (lastResult.key - firstResult.key) < CMTime(value: 1, timescale: 2) else { // make sure results are not more than half seconds apart
-            fatalError("Fail to project hand box: time interval too large")
-        }
-        
-        var handBox = lastResult.value.hands!.first!.boundingBox.toImageCoordinates(CameraSettings.resolution)
-        let deltaTime = lastResult.key - firstResult.key
-        let deltaX = handBox.origin.x - firstResult.value.hands!.first!.boundingBox.origin.x
-        let deltaY = handBox.origin.y - firstResult.value.hands!.first!.boundingBox.origin.y
-        
-        // project the new origin
-        handBox.origin.x += deltaX / deltaTime.seconds * (currentTime - lastResult.key).seconds
-        handBox.origin.y += deltaY / deltaTime.seconds * (currentTime - lastResult.key).seconds
-        
-        return handBox
     }
     
     private func transition(by hand: HumanHandPoseObservation) -> State {
@@ -257,119 +407,6 @@ actor FrameProcessor {
         }
         
         return currentState
-    }
-    
-    /// Returns true if any joints if above the horizon. Assume y increase upwards
-    private func isAbove(of horizon: Float, _ keypoints: [Joint]) -> Bool {
-        for joint in keypoints {
-            if Float(joint.location.y * CameraSettings.resolution.height) > horizon {
-                return true
-            }
-        }
-        return false
-    }
-    
-    /// Returns true if any fingertip crosses the divider polyline.
-    /// - Parameters:
-    ///   - divider: Tuple of three points (front/top, front/middle, back/top) as [x, y] in image space.
-    ///   - keypoints: Hand joints to test.
-    private func crossed(divider: (Keypoint, Keypoint, Keypoint), _ joints: [Joint], handedness: HumanHandPoseObservation.Chirality) -> Bool {
-        let (frontTop, frontMiddle, backTop) = divider
-
-        // Compute the divider's x-position for a given y by clamping to the end points
-        // and linearly interpolating between them.
-        func dividerX(at y: Float) -> Float {
-            let start: SIMD2<Float>
-            let end: SIMD2<Float>
-            
-            if y <= frontTop.position.y {
-                // Case A: Top Section
-                start = frontTop.position
-                end = frontMiddle.position
-            }
-            else if y >= backTop.position.y {
-                // Case B: Bottom Section (Parallel Projection)
-                // Vector Math: Calculate direction (B - A) and add to C
-                // No manual loops needed; SIMD handles the subtraction/addition.
-                let direction = frontMiddle.position - frontTop.position
-                
-                start = backTop.position
-                end = backTop.position + direction
-            }
-            else {
-                // Case C: Middle Section
-                start = frontTop.position
-                end = backTop.position
-            }
-            
-            // 2. Solve for X
-            // Calculate vertical progress 't' (0.0 to 1.0)
-            let dy = end.y - start.y
-            
-            // Safety: Avoid division by zero
-            guard abs(dy) > .leastNormalMagnitude else { return start.x }
-            
-            let t = (y - start.y) / dy
-            
-            // 3. Built-in Interpolation
-            // simd_mix(a, b, t) is the hardware-optimized version of "a + (b - a) * t"
-            return simd_mix(start.x, end.x, t)
-        }
-
-        return joints.contains { joint in
-            let x = Float(joint.location.x * CameraSettings.resolution.width)
-            let y = Float(joint.location.y * CameraSettings.resolution.height)
-            switch handedness {
-                case .left:
-                    return x < dividerX(at: y)
-                case .right:
-                    return x > dividerX(at: y)
-                @unknown default:
-                    fatalError("Unknown handedness")
-            }
-        }
-    }
-    
-    /// Calculate the region of interest for block detection
-    /// Define ROI by hand
-    func defineBlockROI(by handBox: CGRect, cmPerPixel: Float, chirality: HumanHandPoseObservation.Chirality) -> NormalizedRect {
-        var roi = handBox
-        let blockSize = CGFloat(blockLengthInPixels(scale: currentBox!.cmPerPixel))
-        
-        roi.origin.y -=  blockSize * 2
-        roi.size.width += blockSize * 2
-        roi.size.height += blockSize * 2
-        
-        if chirality == .left {
-            roi.origin.x -= blockSize * 2
-        }
-        
-        // right hand don't move the origin.x but extend the width
-        
-        return NormalizedRect(imageRect: roi, in: CameraSettings.resolution)
-    }
-    
-    func runningAverage(_ detections: [BlockDetection]) -> CGPoint? {
-        var totalX: CGFloat = 0
-        var totalY: CGFloat = 0
-        var count: CGFloat = 0
-
-        for detection in detections {
-            // Iterate only if objects exist
-            guard let objects = detection.objects else { continue }
-            
-            for object in objects {
-                let block = object.boundingBox.toImageCoordinates(from: detection.ROI, imageSize: CameraSettings.resolution)
-                totalX += block.midX
-                totalY += block.midY
-                count += 1
-            }
-        }
-
-        // Avoid division by zero
-        guard count > 0 else { return nil }
-
-        return CGPoint(x: totalX / count, y: totalY / count)
     }
     
     func followBlockROI(roiCenter: CGPoint, awayFrom hand: HumanHandPoseObservation) -> NormalizedRect? {

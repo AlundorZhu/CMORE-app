@@ -12,7 +12,7 @@ let INPUTSIZE = CGSize(width: 640, height: 640)
 // MARK: - BoxDetector
 /// Claude generated
 struct BoxDetector {
-    static func createBoxDetector() -> CoreMLModelContainer {
+    static func createBoxDetectionRequest() -> CoreMLRequest {
         let model = try? KeypointDetector()
         
         guard let boxDetector = model else {
@@ -23,7 +23,10 @@ struct BoxDetector {
             fatalError("Failed to convert KeypointDetector model to MLModelContainer")
         }
         
-        return boxDetectorContainer
+        var request = CoreMLRequest(model: boxDetectorContainer)
+        request.cropAndScaleAction = .scaleToFit
+        
+        return request
     }
     
     
