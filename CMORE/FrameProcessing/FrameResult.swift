@@ -8,7 +8,7 @@
 import Foundation
 import Vision
 
-struct Blocks {
+struct BlockDetection {
     let ROI: NormalizedRect
     var objects: [RecognizedObjectObservation]?
 }
@@ -19,7 +19,7 @@ struct FrameResult {
     var faces: [BoundingBoxProviding]?
     var boxDetection: BoxDetection?
     var hands: [HumanHandPoseObservation]?
-    var blocks: Blocks?
+    var blockDetections: [BlockDetection] = []
 }
 
 extension HumanHandPoseObservation : @retroactive BoundingBoxProviding {
