@@ -18,6 +18,11 @@ extension HumanHandPoseObservation {
     }
 }
 
+fileprivate let handsRequest = DetectHumanHandPoseRequest()
+fileprivate let facesRequest = DetectFaceRectanglesRequest()
+fileprivate var blockDetector = BlockDetector()
+
+
 // MARK: - Frame Processor
 /// Making it an actor so only one frame get processed at a time
 /// Handles processing of individual video frames from the camera or video files
@@ -33,19 +38,11 @@ actor FrameProcessor {
         case crossedBack
     }
     
+    // MARK: - Stateful properties
     public private(set) var countingBlocks = false
-    
-    private let facesRequest = DetectFaceRectanglesRequest()
-    
-    private let handsRequest = DetectHumanHandPoseRequest()
-    
-    private var blocksRequest: CoreMLRequest /// var because the region of interest changes
-    
-    private lazy var blocksRequestDuplicate: CoreMLRequest = self.blocksRequest /// one ROI follows the hand, another follows the block projectory
     
     private let boxRequest: CoreMLRequest
     
-    // MARK: - Stateful properties
     private var results: OrderedDictionary<CMTime, FrameResult> = .init()
     
     private var currentBox: BoxDetection?
@@ -63,11 +60,6 @@ actor FrameProcessor {
         var request = CoreMLRequest(model: keypointModelContainer)
         request.cropAndScaleAction = .scaleToFit
         self.boxRequest = request
-        
-        /// Craft the blockDetection request
-        let blockModelContainer = BlockDetector.createBlockDetector()
-        /// Default resize action is scaleToFill
-        self.blocksRequest = CoreMLRequest(model: blockModelContainer)
         
         /// When crossing the bivider
         self.onCrossed = onCross
@@ -134,8 +126,19 @@ actor FrameProcessor {
         
         // MARK: - detect the block
         
+        var blockROIs: [NormalizedRect] = []
+        
         switch currentState {
+            
         case .crossed: // look for blocks around the hand plus roi follow block
+            
+            if let roi = ROIFollowBlocks(awayFrom: hands) {
+                blockROIs.append(roi)
+            }
+            
+            fallthrough
+            
+        case .detecting: // look for block around the hand
             
             var roi: NormalizedRect
             
@@ -156,55 +159,21 @@ actor FrameProcessor {
                 roi = defineBlockROI(by: hands.first!.boundingBox.toImageCoordinates(CameraSettings.resolution), cmPerPixel: currentBox.cmPerPixel, chirality: handedness)
             }
             
-            var handROI = BlockDetection(ROI: roi)
+            blockROIs.append(roi)
             
-            blocksRequest.regionOfInterest = handROI.ROI
+        case .crossedBack: // roi follow block
             
-            async let blocksAroundHand = try? blocksRequest.perform(on: ciImage)
-            
-            var pastBlockDetection: [BlockDetection] = []
-            results.filter { $1.blockDetections.count > 0 }.suffix(5).forEach { _, result in
-                pastBlockDetection.append(contentsOf: result.blockDetections)
+            if let roi = ROIFollowBlocks(awayFrom: hands) {
+                blockROIs.append(roi)
             }
-            
-            if let hand = hands.first,
-                let awayROICenter = runningAverage(pastBlockDetection),
-                let awayROI = followBlockROI(roiCenter: awayROICenter, awayFrom: hand) {
-                blocksRequestDuplicate.regionOfInterest = awayROI
-                let blocksAwayFromHand = try? await blocksRequestDuplicate.perform(on: ciImage)
-                if let blocksAwayFromHand = blocksAwayFromHand as? [RecognizedObjectObservation], blocksAwayFromHand.count > 0 {
-                    
-                    result.blockDetections.append(BlockDetection(
-                        ROI: awayROI,
-                        objects: blocksAwayFromHand
-                    ))
-                } else {
-                    result.blockDetections.append(BlockDetection(ROI: awayROI))
-                }
-            }
-            
-            if let blocks = await blocksAroundHand as? [RecognizedObjectObservation], !blocks.isEmpty {
-                handROI.objects = blocks
-            }
-
-            result.blockDetections.append(handROI)
-            
-        case .detecting: // look for block around the hand
-            
-            var handROI = BlockDetection(ROI: defineBlockROI(by: hands.first!.boundingBox.toImageCoordinates(CameraSettings.resolution), cmPerPixel: currentBox.cmPerPixel, chirality: handedness))
-            
-            blocksRequest.regionOfInterest = handROI.ROI
-            
-            async let blocksAroundHand = try? blocksRequest.perform(on: ciImage)
-            
-            if let blocks = await blocksAroundHand as? [RecognizedObjectObservation], !blocks.isEmpty {
-                handROI.objects = blocks
-            }
-
-            result.blockDetections.append(handROI)
             
         default:
             break
+        }
+        
+        // MARK: - Detect n Process the blocks
+        for await blockDetection in blockDetector.perforAll(on: ciImage, in: blockROIs) {
+            result.blockDetections.append(blockDetection)
         }
         
         guard !hands.isEmpty else { // state transistion requires hand detected
@@ -223,11 +192,25 @@ actor FrameProcessor {
     
     // MARK: - Private Methods
     
+    // Return ROI for detecting blocks by past running average
+    private func ROIFollowBlocks(awayFrom hands: DetectHumanHandPoseRequest.Result) -> NormalizedRect? {
+        
+        var pastBlockDetection: [BlockDetection] = []
+        results.filter { $1.blockDetections.count > 0 }.suffix(5).forEach { _, result in
+            pastBlockDetection.append(contentsOf: result.blockDetections)
+        }
+        
+        guard let hand = hands.first,
+              let awayROICenter = runningAverage(pastBlockDetection) else { return nil }
+        
+        return followBlockROI(roiCenter: awayROICenter, awayFrom: hand)
+    }
+    
     private func projectHandBox(past results: [OrderedDictionary<CMTime, FrameResult>.Element], now currentTime: CMTime) -> CGRect {
         let lastResult = results.last!
         let firstResult = results.first!
         
-        guard (lastResult.key - firstResult.key) > CMTime(value: 1, timescale: 2) else { // make sure results are not more than half seconds apart
+        guard (lastResult.key - firstResult.key) < CMTime(value: 1, timescale: 2) else { // make sure results are not more than half seconds apart
             fatalError("Fail to project hand box: time interval too large")
         }
         

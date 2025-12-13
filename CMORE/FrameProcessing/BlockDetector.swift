@@ -7,10 +7,12 @@
 
 import CoreML
 import Vision
-
+import CoreImage
 
 struct BlockDetector {
-    static func createBlockDetector() -> CoreMLModelContainer {
+    private let modelContainer: CoreMLModelContainer
+    
+    init() {
         let model = try? ObjectDetector()
         
         guard let model = model else {
@@ -23,7 +25,32 @@ struct BlockDetector {
             )
         }
         
-        return blockDetectorContainer
+        modelContainer = blockDetectorContainer
+    }
+    
+    func perforAll(on ciImage: CIImage, in ROIs: [NormalizedRect]) -> AsyncStream<BlockDetection> {
+        return AsyncStream { continuation in
+            Task {
+                await withTaskGroup(of: BlockDetection.self) { group in
+                    for roi in ROIs {
+                        group.addTask {
+                            var request = CoreMLRequest(model: modelContainer)
+                            request.regionOfInterest = roi
+                            return BlockDetection(
+                                ROI: roi,
+                                objects: try? await request.perform(on: ciImage) as? [RecognizedObjectObservation]
+                            )
+                        }
+                    }
+                    
+                    for await detection in group {
+                        continuation.yield(detection)
+                    }
+                    
+                    continuation.finish()
+                }
+            }
+        }
     }
 }
 
