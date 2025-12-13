@@ -41,34 +41,20 @@ fileprivate func isInvalidBlock(_ block: RecognizedObjectObservation, _ roi: Nor
         return false
     }
     
-    // invalid - above the wrist and left/right of the MCPs
+    // invalid - above the center and right of the right hand box
     let blockPixel = block.boundingBox.toImageCoordinates(from: roi, imageSize: CameraSettings.resolution)
     
-    guard let wristY = hand.joint(for: .wrist)?.location.y else { return false }
+    let handBBoxPixel = hand.boundingBox.toImageCoordinates(CameraSettings.resolution)
     
-    if blockPixel.midY < wristY * CameraSettings.resolution.height {
+    if blockPixel.midY < handBBoxPixel.midY {
         return false
     }
     
-    let mcps: [Joint] = [.indexMCP, .middleMCP, .ringMCP, .littleMCP].compactMap {
-        hand.joint(for: $0)
+    if handedness == .left {
+        return blockPixel.midX > handBBoxPixel.midX
+    } else {
+        return blockPixel.midX < handBBoxPixel.midX
     }
-    
-    for joint in mcps {
-        
-        switch handedness {
-        case .left:
-            if joint.location.x < blockPixel.midX { return false }
-        case .right:
-            if joint.location.x > blockPixel.midX { return false }
-            
-        @unknown default:
-            fatalError("Unknow handedness")
-        }
-        
-    }
-    
-    return true
 }
 
 /// Linear projection of the hand box
