@@ -8,7 +8,6 @@
 import UIKit
 import SwiftUI
 import Vision
-import Collections
 import AVFoundation
 import AudioToolbox
 import UniformTypeIdentifiers
