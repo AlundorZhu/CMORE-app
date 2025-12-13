@@ -42,7 +42,7 @@ fileprivate func isInvalidBlock(_ block: RecognizedObjectObservation, _ roi: Nor
     }
     
     // invalid - above the wrist and left/right of the MCPs
-    var blockPixel = block.boundingBox.toImageCoordinates(from: roi, imageSize: CameraSettings.resolution)
+    let blockPixel = block.boundingBox.toImageCoordinates(from: roi, imageSize: CameraSettings.resolution)
     
     guard let wristY = hand.joint(for: .wrist)?.location.y else { return false }
     
@@ -384,9 +384,14 @@ actor FrameProcessor {
                 return .detecting
             }
         case .crossedBack:
-            fallthrough
             /// crossed back -> free
+            if !isAbove(of: max(currentBox!["Back top left"].position.y, currentBox!["Back top right"].position.y), hand.fingerTips) {
+                return .free
+            }
             /// crossed back -> crossed
+            if crossed(divider:(currentBox!["Front divider top"], currentBox!["Front top middle"], currentBox!["Back divider top"]), hand.fingerTips, handedness: hand.chirality!) {
+            }
+            
         case .detecting:
             /// detecting -> free
             if !isAbove(of: max(currentBox!["Back top left"].position.y, currentBox!["Back top right"].position.y), hand.fingerTips) {
