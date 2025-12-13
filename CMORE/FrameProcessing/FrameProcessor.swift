@@ -52,8 +52,6 @@ actor FrameProcessor {
     
     private var currentState: State = .free
     
-    private var cmPerPixel: Float?
-    
     private var handedness: HumanHandPoseObservation.Chirality = .right // none nil default
     
     // MARK: - Public Methods
@@ -135,9 +133,6 @@ actor FrameProcessor {
         }
         
         // MARK: - detect the block
-        if cmPerPixel == nil {
-            cmPerPixel = calculateScaleToCM(currentBox)
-        }
         
         switch currentState {
         case .crossed: // look for blocks around the hand plus roi follow block
@@ -154,11 +149,11 @@ actor FrameProcessor {
                 }
                 
                 let handBox = projectHandBox(past: last2Hands, now: timestamp)
-                roi = defineBlockROI(by: handBox, cmPerPixel: cmPerPixel!, chirality: handedness)
+                roi = defineBlockROI(by: handBox, cmPerPixel: currentBox.cmPerPixel, chirality: handedness)
                 
             } else {
                 
-                roi = defineBlockROI(by: hands.first!.boundingBox.toImageCoordinates(CameraSettings.resolution), cmPerPixel: cmPerPixel!, chirality: handedness)
+                roi = defineBlockROI(by: hands.first!.boundingBox.toImageCoordinates(CameraSettings.resolution), cmPerPixel: currentBox.cmPerPixel, chirality: handedness)
             }
             
             var handROI = BlockDetection(ROI: roi)
@@ -196,7 +191,7 @@ actor FrameProcessor {
             
         case .detecting: // look for block around the hand
             
-            var handROI = BlockDetection(ROI: defineBlockROI(by: hands.first!.boundingBox.toImageCoordinates(CameraSettings.resolution), cmPerPixel: cmPerPixel!, chirality: handedness))
+            var handROI = BlockDetection(ROI: defineBlockROI(by: hands.first!.boundingBox.toImageCoordinates(CameraSettings.resolution), cmPerPixel: currentBox.cmPerPixel, chirality: handedness))
             
             blocksRequest.regionOfInterest = handROI.ROI
             
@@ -365,7 +360,7 @@ actor FrameProcessor {
     /// Define ROI by hand
     func defineBlockROI(by handBox: CGRect, cmPerPixel: Float, chirality: HumanHandPoseObservation.Chirality) -> NormalizedRect {
         var roi = handBox
-        let blockSize = CGFloat(2.5 / cmPerPixel)
+        let blockSize = CGFloat(blockLengthInPixels(scale: currentBox!.cmPerPixel))
         
         roi.origin.y -=  blockSize * 2
         roi.size.width += blockSize * 2
@@ -410,7 +405,7 @@ actor FrameProcessor {
         )
         
         // extend the mid point to roi
-        let blockSize = 2.5 / cmPerPixel!
+        let blockSize = blockLengthInPixels(scale: currentBox!.cmPerPixel)
         
         for joint in hand.fingerTips {
             if distance(roiCenter, SIMD2<Double>(

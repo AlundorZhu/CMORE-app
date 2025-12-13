@@ -26,3 +26,8 @@ struct BlockDetector {
         return blockDetectorContainer
     }
 }
+
+// block length 2.5cm or 1in
+func blockLengthInPixels(scale: Float) -> Float {
+    return 2.5 / scale
+}
