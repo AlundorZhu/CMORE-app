@@ -347,15 +347,6 @@ actor FrameProcessor {
         }
     }
     
-    /// Calculate the cm/px ratio
-    private func calculateScaleToCM(_ box: BoxDetection) -> Float {
-        let dividerHeight: Float = 10.0 // cm
-        let keypointHeight = // px
-        distance(box["Front divider top"].position, box["Front top middle"].position)
-        
-        return dividerHeight / keypointHeight
-    }
-    
     /// Calculate the region of interest for block detection
     /// Define ROI by hand
     func defineBlockROI(by handBox: CGRect, cmPerPixel: Float, chirality: HumanHandPoseObservation.Chirality) -> NormalizedRect {
