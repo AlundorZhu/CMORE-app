@@ -182,6 +182,17 @@ fileprivate func runningAverage(_ detections: [BlockDetection]) -> CGPoint? {
     return CGPoint(x: totalX / count, y: totalY / count)
 }
 
+fileprivate func scaleROIcenter(_ center: CGPoint, blockSize: Double) -> NormalizedRect {
+    return NormalizedRect(
+        imageRect: CGRect(
+            x: center.x - 1.5 * blockSize,
+            y: center.y - 1.5 * blockSize,
+            width: 3 * blockSize,
+            height: 3 * blockSize
+        ),
+        in: CameraSettings.resolution)
+}
+
 // MARK: - Frame Processor
 /// Making it an actor so only one frame get processed at a time
 /// Handles processing of individual video frames from the camera or video files
@@ -203,6 +214,50 @@ actor FrameProcessor {
     private var results: OrderedDictionary<CMTime, FrameResult> = .init()
     
     private var currentBox: BoxDetection?
+    
+    private var blockSize: Double {
+        guard let box = currentBox else { fatalError("No box exist!") }
+        return blockLengthInPixels(scale: box.cmPerPixel)
+    }
+    
+    // Return ROIs centered on past blocks
+    private var pastBlockCenters: [CGPoint] {
+        
+        // look in the last 5 frames to find one where we detected some blocks
+        guard let recentDetection = results.values.suffix(6).last(where: {
+            !$0.blockDetections.isEmpty &&
+            !$0.blockDetections.compactMap { $0.objects }.isEmpty
+        }) else { return [] }
+        
+        let minDistanceSq = blockSize * blockSize
+        
+        return recentDetection.blockDetections.reduce(into: [CGPoint]()) { points, detection in
+            // Handle the optional 'objects' array safely using simple coalescence
+            guard let blocks = detection.objects else { return }
+            
+            for block in blocks {
+                // 1. Calculate the candidate point
+                let rect = block.boundingBox.toImageCoordinates(
+                    from: detection.ROI,
+                    imageSize: CameraSettings.resolution
+                )
+                let candidate = CGPoint(x: rect.midX, y: rect.midY)
+                let candidateVec = SIMD2<Double>(x: candidate.x, y: candidate.y)
+                
+                // 2. Check immediately against the points we have accepted SO FAR
+                // (No second iteration needed, we check as we build)
+                let isTooClose = points.contains { existingPoint in
+                    let existingVec = SIMD2<Double>(x: existingPoint.x, y: existingPoint.y)
+                    return simd_distance_squared(candidateVec, existingVec) < minDistanceSq
+                }
+                
+                // 3. Add only if valid
+                if !isTooClose {
+                    points.append(candidate)
+                }
+            }
+        }
+    }
     
     private var currentState: State = .free
     
@@ -282,9 +337,25 @@ actor FrameProcessor {
             
         case .crossed: // look for blocks around the hand plus roi follow block
             
-            if let roi = ROIFollowBlocks(awayFrom: hands) {
-                blockROIs.append(roi)
-            }
+            let roiCenters: [CGPoint]
+            if hands.count > 0 { // filter out the roi close to hand (will be taken care of by roi around hand
+                
+                roiCenters = pastBlockCenters.filter { center in
+                    let roiCenter = SIMD2<Double>(x: center.x, y: center.y)
+                    let threshold = blockSize
+                    
+                    for joint in hands.first!.fingerTips {
+                        let jointPixel = SIMD2<Double>(x: joint.location.x, y: joint.location.y)
+                        if distance(roiCenter, jointPixel) < threshold { return false }
+                    }
+                    return true
+                }
+            } else { roiCenters = pastBlockCenters }
+            
+            // scale the center to a ROI for block detection
+            blockROIs.append(contentsOf: roiCenters.map { center in
+                return scaleROIcenter(center, blockSize: blockSize)
+            })
             
             fallthrough
             
@@ -313,9 +384,9 @@ actor FrameProcessor {
             
         case .crossedBack: // roi follow block
             
-            if let roi = ROIFollowBlocks(awayFrom: hands) {
-                blockROIs.append(roi)
-            }
+            blockROIs.append(contentsOf: pastBlockCenters.map { center in
+                return scaleROIcenter(center, blockSize: blockSize)
+            })
             
         default:
             break
@@ -347,20 +418,6 @@ actor FrameProcessor {
     }
     
     // MARK: - Private Methods
-    
-    // Return ROI for detecting blocks by past running average
-    private func ROIFollowBlocks(awayFrom hands: DetectHumanHandPoseRequest.Result) -> NormalizedRect? {
-        
-        var pastBlockDetection: [BlockDetection] = []
-        results.filter { $1.blockDetections.count > 0 }.suffix(5).forEach { _, result in
-            pastBlockDetection.append(contentsOf: result.blockDetections)
-        }
-        
-        guard let hand = hands.first,
-              let awayROICenter = runningAverage(pastBlockDetection) else { return nil }
-        
-        return followBlockROI(roiCenter: awayROICenter, awayFrom: hand)
-    }
     
     private func transition(by hand: HumanHandPoseObservation) -> State {
         
@@ -398,34 +455,6 @@ actor FrameProcessor {
         }
         
         return currentState
-    }
-    
-    func followBlockROI(roiCenter: CGPoint, awayFrom hand: HumanHandPoseObservation) -> NormalizedRect? {
-        let roiCenter = SIMD2<Double> (
-            x: roiCenter.x,
-            y: roiCenter.y
-        )
-        
-        // extend the mid point to roi
-        let blockSize = blockLengthInPixels(scale: currentBox!.cmPerPixel)
-        
-        for joint in hand.fingerTips {
-            if distance(roiCenter, SIMD2<Double>(
-                x: joint.location.x * CameraSettings.resolution.width,
-                y: joint.location.y * CameraSettings.resolution.height))
-            < 0.5 * Double(blockSize) {
-                return nil // Don't move away from hand
-            }
-        }
-        
-        let x: Double = roiCenter.x - Double(2 * blockSize)
-        let y: Double = roiCenter.y - Double(2 * blockSize)
-        let width: Double = roiCenter.x + Double(2 * blockSize) - x
-        let heigh: Double = roiCenter.y + Double(2 * blockSize) - y
-        
-        let rect = CGRect(x: x, y: y, width: width, height: heigh)
-        
-        return NormalizedRect(imageRect: rect, in: CameraSettings.resolution)
     }
 }
 

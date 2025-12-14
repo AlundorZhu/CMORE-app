@@ -174,12 +174,12 @@ struct BoxDetection {
     var objectConf: Float = 0
     var keypoints: [Keypoint] = []
     
-    var cmPerPixel: Float {
-        let dividerHeight: Float = 10.0 // cm
+    var cmPerPixel: Double {
+        let dividerHeight: Double = 10.0 // cm
         let keypointHeight = // px
         distance(self["Front divider top"].position, self["Front top middle"].position)
         
-        return dividerHeight / keypointHeight
+        return dividerHeight / Double(keypointHeight)
     }
     
     private let keypointNames: [String] = ["Front top left", "Front bottom left", "Front top middle", "Front bottom middle", "Front top right", "Front bottom right", "Back divider top", "Front divider top", "Back top left", "Back top right"]
