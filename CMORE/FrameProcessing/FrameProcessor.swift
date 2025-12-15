@@ -278,6 +278,11 @@ actor FrameProcessor {
     
     func stopCountingBlocks() {
         self.countingBlocks = false
+        
+        // reset states
+        results.removeAll()
+        currentBox = nil
+        currentState = .free
     }
     
     /// Processes a single frame from the camera or video
