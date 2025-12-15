@@ -6,8 +6,8 @@
 //
 
 import UIKit
-import SwiftUI
 import Vision
+import OrderedCollections
 import AVFoundation
 import AudioToolbox
 import UniformTypeIdentifiers
@@ -38,6 +38,12 @@ class CMOREViewModel: NSObject, ObservableObject, AVCaptureFileOutputRecordingDe
     /// The URL of the current video being processed (temporary)
     private var currentVideoURL: URL?
     
+    /// Suffix for both saved video and result
+    private var fileNameSuffix: String?
+    
+    /// The algorithm and ml results for the video
+    private var result: OrderedDictionary<CMTime, FrameResult>?
+    
     /// Handles video data output from the camera
     private var videoOutput: AVCaptureVideoDataOutput?
     
@@ -48,7 +54,7 @@ class CMOREViewModel: NSObject, ObservableObject, AVCaptureFileOutputRecordingDe
     private var numFrameBehind: Int = 0
     
     /// Maximum of frames allowed to buffer before droping frames
-    private let maxFrameBehind: Int = 12
+    private let maxFrameBehind: Int = 6
     
     /// Tracks the current frame number
     private var frameNum: UInt = 0
@@ -123,6 +129,45 @@ class CMOREViewModel: NSObject, ObservableObject, AVCaptureFileOutputRecordingDe
             self.currentVideoURL = nil
             self.showSaveConfirmation = false
         }
+    }
+    
+    /// Save the algorithm and ML results to disk
+    func saveResults() {
+        let url = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        
+        guard let fileNameSuffix = fileNameSuffix else { fatalError() }
+        let saveURL = url.appendingPathComponent("CMORE_Results_\(fileNameSuffix).json")
+
+        let encoder = JSONEncoder()
+        
+        guard let result = result else { fatalError("no result ready to save!") } // maybe a race condition
+        
+        struct resultExport: Codable {
+            let timestampInSeconds: Double
+            let result: FrameResult
+        }
+
+        do {
+            let exportableDict = result.map {
+                resultExport(
+                    timestampInSeconds: $0.seconds,
+                    result: $1
+                )
+            }
+
+            let data = try encoder.encode(exportableDict)
+            try data.write(to: saveURL)
+            print("Results saved to: \(saveURL)")
+        } catch {
+            print("Error saving results: \(error)")
+        }
+        
+        self.fileNameSuffix = nil
+    }
+    
+    func discardResults() {
+        result = nil
+        fileNameSuffix = nil
     }
     
     /// Starts the camera feed
@@ -272,7 +317,10 @@ class CMOREViewModel: NSObject, ObservableObject, AVCaptureFileOutputRecordingDe
             
         // Create a unique filename for the recorded video
         let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
-        let videoFileName = "CMORE_Recording_\(Date().timeIntervalSince1970).mov"
+        let suffix = Date().timeIntervalSince1970
+        
+        let videoFileName = "CMORE_Recording_\(suffix).mov"
+        fileNameSuffix = String(suffix)
         let outputURL = documentsPath.appendingPathComponent(videoFileName)
         
         // Store the URL for later use
@@ -302,7 +350,7 @@ class CMOREViewModel: NSObject, ObservableObject, AVCaptureFileOutputRecordingDe
         
         // Stop the block counting algorithm
         Task {
-            await frameProcessor.stopCountingBlocks()
+            result = await frameProcessor.stopCountingBlocks()
         }
         
         // Stop recording - delegate methods will be called when finished

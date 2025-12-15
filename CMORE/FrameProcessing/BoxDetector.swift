@@ -166,7 +166,7 @@ struct BoxDetector {
 
 // MARK: - Supporting Structures
 
-struct BoxDetection {
+struct BoxDetection: Codable {
     var centerX: Float = 0
     var centerY: Float = 0
     var width: Float = 0
@@ -180,6 +180,16 @@ struct BoxDetection {
         distance(self["Front divider top"].position, self["Front top middle"].position)
         
         return dividerHeight / Double(keypointHeight)
+    }
+    
+    // Control which properties get saved
+    enum CodingKeys: String, CodingKey {
+        case centerX
+        case centerY
+        case width
+        case height
+        case objectConf
+        case keypoints
     }
     
     private let keypointNames: [String] = ["Front top left", "Front bottom left", "Front top middle", "Front bottom middle", "Front top right", "Front bottom right", "Back divider top", "Front divider top", "Back top left", "Back top right"]
@@ -197,7 +207,7 @@ struct BoxDetection {
     }
 }
 
-struct Keypoint {
+struct Keypoint: Codable {
     let confidence: Float
     var position: SIMD2<Float>
 }

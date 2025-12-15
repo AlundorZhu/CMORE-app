@@ -8,15 +8,15 @@
 import Foundation
 import Vision
 
-struct BlockDetection {
+struct BlockDetection: Codable {
     let ROI: NormalizedRect
     var objects: [RecognizedObjectObservation]?
 }
 
-struct FrameResult {
+struct FrameResult: Codable {
     /// The state at which processing the this frame
     let processingState: FrameProcessor.State
-    var faces: [BoundingBoxProviding]?
+    var faces: [FaceObservation]?
     var boxDetection: BoxDetection?
     var hands: [HumanHandPoseObservation]?
     var blockDetections: [BlockDetection] = []

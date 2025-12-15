@@ -201,7 +201,7 @@ actor FrameProcessor {
     
     nonisolated let onCrossed: (() -> Void) // For sound playing
     
-    enum State {
+    enum State: Codable {
         case free
         case detecting
         case crossed
@@ -276,13 +276,16 @@ actor FrameProcessor {
         self.currentBox = box
     }
     
-    func stopCountingBlocks() {
-        self.countingBlocks = false
+    func stopCountingBlocks() -> OrderedDictionary<CMTime, FrameResult> {
+        let resultsOutput = results
         
         // reset states
+        countingBlocks = false
         results.removeAll()
         currentBox = nil
         currentState = .free
+        
+        return resultsOutput
     }
     
     /// Processes a single frame from the camera or video
