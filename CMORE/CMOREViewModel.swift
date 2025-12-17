@@ -413,6 +413,10 @@ extension CMOREViewModel: AVCaptureVideoDataOutputSampleBufferDelegate {
     func captureOutput(_ output: AVCaptureOutput, didDrop sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
         frameNum += 1
         print("Avfundation Dropped frame: \(frameNum) automatically!")
+        
+        if isRecording && recordingStartTime == nil {
+            recordingStartTime = sampleBuffer.presentationTimeStamp
+        }
     }
 }
 
