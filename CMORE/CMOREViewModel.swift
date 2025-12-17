@@ -157,7 +157,11 @@ class CMOREViewModel: NSObject, ObservableObject, AVCaptureFileOutputRecordingDe
             print("Error saving results: \(error)")
         }
         
+        // reset fileName
         self.fileNameSuffix = nil
+        
+        // reset the startTimestamp
+        self.recordingStartTime = nil
     }
     
     func discardResults() {
@@ -350,9 +354,6 @@ class CMOREViewModel: NSObject, ObservableObject, AVCaptureFileOutputRecordingDe
         
         // Stop recording - delegate methods will be called when finished
         movieOutput.stopRecording()
-        
-        // reset the startTimestamp
-        recordingStartTime = nil
     }
 }
 
@@ -368,6 +369,7 @@ extension CMOREViewModel: AVCaptureVideoDataOutputSampleBufferDelegate {
         
         let currentTime = sampleBuffer.presentationTimeStamp
         frameNum += 1
+        
         if isRecording && recordingStartTime == nil {
             recordingStartTime = currentTime
         }
