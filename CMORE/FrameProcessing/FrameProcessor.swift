@@ -9,12 +9,52 @@ import Foundation
 import CoreImage
 import Vision
 import simd
-import OrderedCollections
 
 extension HumanHandPoseObservation {
     var fingerTips: [Joint] {
         [.thumbTip, .indexTip, .middleTip, .ringTip, .littleTip]
             .compactMap { joint(for: $0) }
+    }
+}
+
+extension NormalizedRect {
+    func percentCovered(by other: NormalizedRect) -> CGFloat {
+        // 1. Calculate Intersection (same as above)
+        let x1 = max(self.origin.x, other.origin.x)
+        let y1 = max(self.origin.y, other.origin.y)
+        let x2 = min(self.origin.x + self.width, other.origin.x + other.width)
+        let y2 = min(self.origin.y + self.height, other.origin.y + other.height)
+        
+        let intersectionArea = max(0, x2 - x1) * max(0, y2 - y1)
+        
+        // 2. Calculate Self Area
+        let selfArea = self.width * self.height
+        
+        // 3. Return Percentage
+        return selfArea > 0 ? intersectionArea / selfArea : 0.0
+    }
+}
+
+extension Array where Element: Comparable {
+    mutating func insertSorted(_ element: Element) {
+
+        if let last = self.last, element >= last {
+            self.append(element)
+            return
+        }
+        
+        // Binary search for the correct insertion index
+        var low = 0
+        var high = self.count
+        while low < high {
+            let mid = low + (high - low) / 2
+            if self[mid] < element {
+                low = mid + 1
+            } else {
+                high = mid
+            }
+        }
+        self.insert(element, at: low)
     }
 }
 
@@ -58,27 +98,27 @@ fileprivate func isInvalidBlock(_ block: RecognizedObjectObservation, _ roi: Nor
 }
 
 /// Linear projection of the hand box
-fileprivate func projectHandBox(past results: [OrderedDictionary<CMTime, FrameResult>.Element], now currentTime: CMTime) -> CGRect {
-    let lastResult = results.last!
-    let firstResult = results.first!
+fileprivate func projectHandBox(past: (newer: FrameResult, older: FrameResult), now currentTime: CMTime) -> CGRect {
+    var newerBox = past.newer.hands!.first!.boundingBox.toImageCoordinates(CameraSettings.resolution)
+    let olderBox = past.older.hands!.first!.boundingBox.toImageCoordinates(CameraSettings.resolution)
+    let deltaTime = (past.newer.presentationTime - past.older.presentationTime)
     
-    guard (lastResult.key - firstResult.key) < CMTime(value: 1, timescale: 2) else { // make sure results are not more than half seconds apart
+    guard deltaTime < CMTime(value: 1, timescale: 2) else { // make sure results are not more than half seconds apart
         fatalError("Fail to project hand box: time interval too large")
     }
     
-    var handBox = lastResult.value.hands!.first!.boundingBox.toImageCoordinates(CameraSettings.resolution)
-    let deltaTime = lastResult.key - firstResult.key
-    let deltaX = handBox.origin.x - firstResult.value.hands!.first!.boundingBox.origin.x
-    let deltaY = handBox.origin.y - firstResult.value.hands!.first!.boundingBox.origin.y
+
+    let deltaX = newerBox.origin.x - olderBox.origin.x
+    let deltaY = newerBox.origin.y - olderBox.origin.y
     
     // project the new origin
-    handBox.origin.x += deltaX / deltaTime.seconds * (currentTime - lastResult.key).seconds
-    handBox.origin.y += deltaY / deltaTime.seconds * (currentTime - lastResult.key).seconds
+    newerBox.origin.x += deltaX / deltaTime.seconds * (currentTime - past.newer.presentationTime).seconds
+    newerBox.origin.y += deltaY / deltaTime.seconds * (currentTime - past.newer.presentationTime).seconds
     
-    return handBox
+    return newerBox
 }
 
-fileprivate func defineBloackROI(by hands: [HumanHandPoseObservation], _ results: OrderedDictionary<CMTime, FrameResult>, _ timestamp: CMTime, _ currentBox: BoxDetection, _ handedness: HumanHandPoseObservation.Chirality) -> NormalizedRect? {
+fileprivate func defineBloackROI(by hands: [HumanHandPoseObservation], _ results: [FrameResult], _ timestamp: CMTime, _ currentBox: BoxDetection, _ handedness: HumanHandPoseObservation.Chirality) -> NormalizedRect? {
     
     /// Calculate the region of interest for block detection
     /// Define ROI by hand
@@ -102,14 +142,15 @@ fileprivate func defineBloackROI(by hands: [HumanHandPoseObservation], _ results
     
     if hands.isEmpty {
         let last2Hands = results
-            .filter { $1.hands != nil && $1.hands!.count > 0 }
+            .lazy
+            .filter { $0.hands != nil && $0.hands!.count > 0 }
             .suffix(2)
         
         guard last2Hands.count == 2 else {
             return nil
         }
         
-        let handBox = projectHandBox(past: last2Hands, now: timestamp)
+        let handBox = projectHandBox(past: (last2Hands.last!, last2Hands.first!), now: timestamp)
         roi = expandHandBox(by: handBox, CGFloat(blockLengthInPixels(scale: currentBox.cmPerPixel)), handedness)
         
     } else {
@@ -225,7 +266,7 @@ actor FrameProcessor {
     
     nonisolated let onCrossed: (() -> Void) // For sound playing
     
-    enum State: Codable {
+    enum State: String, Codable {
         case free
         case detecting
         case crossed
@@ -235,7 +276,7 @@ actor FrameProcessor {
     // MARK: - Stateful properties
     public private(set) var countingBlocks = false
     
-    private var results: OrderedDictionary<CMTime, FrameResult> = .init()
+    private var results: [FrameResult] = []
     
     private var currentBox: BoxDetection?
     
@@ -248,7 +289,7 @@ actor FrameProcessor {
     private var pastBlockCenters: [CGPoint] {
         
         // look in the last 6 frames to find one where we detected some blocks
-        guard let recentDetection = results.values.suffix(6).last(where: {
+        guard let recentDetection = results.suffix(6).last(where: {
             !$0.blockDetections.isEmpty &&
             !$0.blockDetections.compactMap { $0.objects }.isEmpty
         }) else { return [] }
@@ -300,7 +341,7 @@ actor FrameProcessor {
         self.currentBox = box
     }
     
-    func stopCountingBlocks() -> OrderedDictionary<CMTime, FrameResult> {
+    func stopCountingBlocks() -> [FrameResult]{
         let resultsOutput = results
         
         // reset states
@@ -318,9 +359,13 @@ actor FrameProcessor {
     ///     - timestamp: The presentation time of the frame
     func processFrame(_ pixelBuffer: CVImageBuffer, time timestamp: CMTime) async -> FrameResult {
         
-        var result = FrameResult(processingState: currentState)
+        var result = FrameResult(presentationTime: timestamp, processingState: currentState )
         
-        defer { results[timestamp] = result }
+        defer {
+            if countingBlocks {
+                results.insertSorted(result)
+            }
+        }
         
         let ciImage = CIImage(cvPixelBuffer: pixelBuffer)
         async let faces = try? facesRequest.perform(on: ciImage)
@@ -369,28 +414,18 @@ actor FrameProcessor {
             
         case .crossed: // look for blocks around the hand plus roi follow block
             
-            
-            let roiCenters: [CGPoint]
-            
-            if hands.count > 0 { // filter out the roi close to hand (will be taken care of by roi around hand
+            if let handROI = defineBloackROI(by: hands, results, timestamp, currentBox, handedness) {
+                blockROIs.append(handROI)
                 
-                roiCenters = pastBlockCenters.filter { center in
-                    let roiCenter = SIMD2<Double>(x: center.x, y: center.y)
-                    let threshold = blockSize
-                    
-                    for joint in hands.first!.fingerTips {
-                        let jointPixel = SIMD2<Double>(x: joint.location.x, y: joint.location.y)
-                        if distance(roiCenter, jointPixel) < threshold { return false }
+                blockROIs.append(contentsOf: pastBlockCenters.reduce(into: []) { result, blockCenter in
+                    let candidateROI = scaleROIcenter(blockCenter, blockSize: blockSize)
+                        
+                    // don't append the ROI where it's covered by hand already.
+                    if candidateROI.percentCovered(by: handROI) < 0.5 {
+                        result.append(candidateROI)
                     }
-                    return true
-                }
-                
-            } else { roiCenters = pastBlockCenters }
-            
-            // scale the center to a ROI for block detection
-            blockROIs.append(contentsOf: roiCenters.map { center in
-                return scaleROIcenter(center, blockSize: blockSize)
-            })
+                })
+            }
             
         case .detecting: // look for block around the hand
             
@@ -413,7 +448,8 @@ actor FrameProcessor {
             var allBlocks = blockDetection
             if var objects = allBlocks.objects {
                 objects.removeAll { block in
-                    isInvalidBlock(block, allBlocks.ROI, basedOn: hands.first, handedness)
+                    isInvalidBlock(block, allBlocks.ROI, basedOn: hands.first, handedness) ||
+                    block.confidence < 0.5
                 }
                 allBlocks.objects = objects
             }

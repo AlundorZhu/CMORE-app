@@ -41,8 +41,11 @@ class CMOREViewModel: NSObject, ObservableObject, AVCaptureFileOutputRecordingDe
     /// Suffix for both saved video and result
     private var fileNameSuffix: String?
     
+    /// Timestamp for the start
+    private var recordingStartTime: CMTime?
+    
     /// The algorithm and ml results for the video
-    private var result: OrderedDictionary<CMTime, FrameResult>?
+    private var result: [FrameResult]?
     
     /// Handles video data output from the camera
     private var videoOutput: AVCaptureVideoDataOutput?
@@ -140,22 +143,14 @@ class CMOREViewModel: NSObject, ObservableObject, AVCaptureFileOutputRecordingDe
 
         let encoder = JSONEncoder()
         
-        guard let result = result else { fatalError("no result ready to save!") } // maybe a race condition
-        
-        struct resultExport: Codable {
-            let timestampInSeconds: Double
-            let result: FrameResult
-        }
+        guard let result = result, let recordingStartTime = recordingStartTime else { fatalError("no result ready to save!") } // maybe a race condition
 
         do {
-            let exportableDict = result.map {
-                resultExport(
-                    timestampInSeconds: $0.seconds,
-                    result: $1
-                )
-            }
-
-            let data = try encoder.encode(exportableDict)
+            let data = try encoder.encode(result.map {
+                var tmp = $0
+                tmp.presentationTime = tmp.presentationTime - recordingStartTime
+                return tmp
+            })
             try data.write(to: saveURL)
             print("Results saved to: \(saveURL)")
         } catch {
@@ -355,6 +350,9 @@ class CMOREViewModel: NSObject, ObservableObject, AVCaptureFileOutputRecordingDe
         
         // Stop recording - delegate methods will be called when finished
         movieOutput.stopRecording()
+        
+        // reset the startTimestamp
+        recordingStartTime = nil
     }
 }
 
@@ -370,6 +368,9 @@ extension CMOREViewModel: AVCaptureVideoDataOutputSampleBufferDelegate {
         
         let currentTime = sampleBuffer.presentationTimeStamp
         frameNum += 1
+        if isRecording && recordingStartTime == nil {
+            recordingStartTime = currentTime
+        }
         
         print(String(repeating: "-", count: 50))
         
@@ -391,7 +392,10 @@ extension CMOREViewModel: AVCaptureVideoDataOutputSampleBufferDelegate {
         print("Processing Frame: \(frameNum)")
         
         // Extract the pixel buffer from the sample buffer
-        guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
+        guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else {
+            print("Fail to get pixel buffer!")
+            return
+        }
         
         // Process the frame
         Task {

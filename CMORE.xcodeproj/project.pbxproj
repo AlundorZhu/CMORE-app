@@ -6,10 +6,6 @@
 	objectVersion = 77;
 	objects = {
 
-/* Begin PBXBuildFile section */
-		8A708DF72EE4B636007B80E6 /* OrderedCollections in Frameworks */ = {isa = PBXBuildFile; productRef = 8A708DF62EE4B636007B80E6 /* OrderedCollections */; };
-/* End PBXBuildFile section */
-
 /* Begin PBXContainerItemProxy section */
 		8A05439F2E55657D00BE2B01 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -69,7 +65,6 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				8A708DF72EE4B636007B80E6 /* OrderedCollections in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -122,7 +117,6 @@
 			);
 			name = CMORE;
 			packageProductDependencies = (
-				8A708DF62EE4B636007B80E6 /* OrderedCollections */,
 			);
 			productName = CMORE;
 			productReference = 8A19DD772E610B010038DD1E /* CMORE.app */;
@@ -207,7 +201,6 @@
 			mainGroup = 8A0543872E55657C00BE2B01;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
-				8A708DF52EE4B636007B80E6 /* XCRemoteSwiftPackageReference "swift-collections" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 8A0543872E55657C00BE2B01;
@@ -623,25 +616,6 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
-
-/* Begin XCRemoteSwiftPackageReference section */
-		8A708DF52EE4B636007B80E6 /* XCRemoteSwiftPackageReference "swift-collections" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/apple/swift-collections.git";
-			requirement = {
-				kind = upToNextMajorVersion;
-				minimumVersion = 1.3.0;
-			};
-		};
-/* End XCRemoteSwiftPackageReference section */
-
-/* Begin XCSwiftPackageProductDependency section */
-		8A708DF62EE4B636007B80E6 /* OrderedCollections */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = 8A708DF52EE4B636007B80E6 /* XCRemoteSwiftPackageReference "swift-collections" */;
-			productName = OrderedCollections;
-		};
-/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 8A0543882E55657C00BE2B01 /* Project object */;
 }
