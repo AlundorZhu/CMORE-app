@@ -429,7 +429,7 @@ actor FrameProcessor {
                     let candidateROI = scaleROIcenter(blockCenter, blockSize: blockSize)
                         
                     // don't append the ROI where it's covered by hand already.
-                    if candidateROI.percentCovered(by: handROI) < 0.5 {
+                    if candidateROI.percentCovered(by: handROI) < 0.7 {
                         result.append(candidateROI)
                     }
                 })
