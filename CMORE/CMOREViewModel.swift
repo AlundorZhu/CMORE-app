@@ -325,6 +325,11 @@ class CMOREViewModel: NSObject, ObservableObject, AVCaptureFileOutputRecordingDe
         // Store the URL for later use
         currentVideoURL = outputURL
         
+        // Set video orientation to landscape right
+        if let connection = movieOutput.connection(with: .video) {
+            connection.videoRotationAngle = 0.0
+        }
+        
         // Start recording with the movie output
         movieOutput.startRecording(to: outputURL, recordingDelegate: self)
         print("Recording started")
