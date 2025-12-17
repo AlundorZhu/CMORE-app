@@ -78,23 +78,47 @@ fileprivate func projectHandBox(past results: [OrderedDictionary<CMTime, FrameRe
     return handBox
 }
 
-/// Calculate the region of interest for block detection
-/// Define ROI by hand
-fileprivate func defineBlockROI(by handBox: CGRect, _ box: BoxDetection, _ chirality: HumanHandPoseObservation.Chirality) -> NormalizedRect {
-    var roi = handBox
-    let blockSize = CGFloat(blockLengthInPixels(scale: box.cmPerPixel))
+fileprivate func defineBloackROI(by hands: [HumanHandPoseObservation], _ results: OrderedDictionary<CMTime, FrameResult>, _ timestamp: CMTime, _ currentBox: BoxDetection, _ handedness: HumanHandPoseObservation.Chirality) -> NormalizedRect? {
     
-    roi.origin.y -=  blockSize * 2
-    roi.size.width += blockSize * 2
-    roi.size.height += blockSize * 2
-    
-    if chirality == .left {
-        roi.origin.x -= blockSize * 2
+    /// Calculate the region of interest for block detection
+    /// Define ROI by hand
+    func expandHandBox(by handBox: CGRect, _ blockSize: CGFloat, _ chirality: HumanHandPoseObservation.Chirality) -> NormalizedRect {
+        var roi = handBox
+        
+        roi.origin.y -=  blockSize * 2
+        roi.size.width += blockSize * 2
+        roi.size.height += blockSize * 2
+        
+        if chirality == .left {
+            roi.origin.x -= blockSize * 2
+        }
+        
+        // right hand don't move the origin.x but extend the width
+        
+        return NormalizedRect(imageRect: roi, in: CameraSettings.resolution)
     }
     
-    // right hand don't move the origin.x but extend the width
+    var roi: NormalizedRect
     
-    return NormalizedRect(imageRect: roi, in: CameraSettings.resolution)
+    if hands.isEmpty {
+        let last2Hands = results
+            .filter { $1.hands != nil && $1.hands!.count > 0 }
+            .suffix(2)
+        
+        guard last2Hands.count == 2 else {
+            return nil
+        }
+        
+        let handBox = projectHandBox(past: last2Hands, now: timestamp)
+        roi = expandHandBox(by: handBox, CGFloat(blockLengthInPixels(scale: currentBox.cmPerPixel)), handedness)
+        
+    } else {
+        
+        roi = expandHandBox(by: hands.first!.boundingBox.toImageCoordinates(CameraSettings.resolution), CGFloat(blockLengthInPixels(scale: currentBox.cmPerPixel)), handedness)
+        
+    }
+    
+    return roi
 }
 
 /// Returns true if any fingertip crosses the divider polyline.
@@ -185,10 +209,10 @@ fileprivate func runningAverage(_ detections: [BlockDetection]) -> CGPoint? {
 fileprivate func scaleROIcenter(_ center: CGPoint, blockSize: Double) -> NormalizedRect {
     return NormalizedRect(
         imageRect: CGRect(
-            x: center.x - 1.5 * blockSize,
-            y: center.y - 1.5 * blockSize,
-            width: 3 * blockSize,
-            height: 3 * blockSize
+            x: center.x - 2 * blockSize,
+            y: center.y - 2 * blockSize,
+            width: 4 * blockSize,
+            height: 4 * blockSize
         ),
         in: CameraSettings.resolution)
 }
@@ -223,13 +247,13 @@ actor FrameProcessor {
     // Return ROIs centered on past blocks
     private var pastBlockCenters: [CGPoint] {
         
-        // look in the last 5 frames to find one where we detected some blocks
+        // look in the last 6 frames to find one where we detected some blocks
         guard let recentDetection = results.values.suffix(6).last(where: {
             !$0.blockDetections.isEmpty &&
             !$0.blockDetections.compactMap { $0.objects }.isEmpty
         }) else { return [] }
         
-        let minDistanceSq = blockSize * blockSize
+        let minDistanceSq = (2*blockSize) * (2*blockSize)
         
         return recentDetection.blockDetections.reduce(into: [CGPoint]()) { points, detection in
             // Handle the optional 'objects' array safely using simple coalescence
@@ -345,7 +369,9 @@ actor FrameProcessor {
             
         case .crossed: // look for blocks around the hand plus roi follow block
             
+            
             let roiCenters: [CGPoint]
+            
             if hands.count > 0 { // filter out the roi close to hand (will be taken care of by roi around hand
                 
                 roiCenters = pastBlockCenters.filter { center in
@@ -358,6 +384,7 @@ actor FrameProcessor {
                     }
                     return true
                 }
+                
             } else { roiCenters = pastBlockCenters }
             
             // scale the center to a ROI for block detection
@@ -365,30 +392,11 @@ actor FrameProcessor {
                 return scaleROIcenter(center, blockSize: blockSize)
             })
             
-            fallthrough
-            
         case .detecting: // look for block around the hand
             
-            var roi: NormalizedRect
-            
-            if hands.isEmpty {
-                let last2Hands = results
-                    .filter { $1.hands != nil && $1.hands!.count > 0 }
-                    .suffix(2)
-                
-                guard last2Hands.count == 2 else {
-                    break
-                }
-                
-                let handBox = projectHandBox(past: last2Hands, now: timestamp)
-                roi = defineBlockROI(by: handBox, currentBox, handedness)
-                
-            } else {
-                
-                roi = defineBlockROI(by: hands.first!.boundingBox.toImageCoordinates(CameraSettings.resolution), currentBox, handedness)
+            if let roi = defineBloackROI(by: hands, results, timestamp, currentBox, handedness) {
+                blockROIs.append(roi)
             }
-            
-            blockROIs.append(roi)
             
         case .crossedBack: // roi follow block
             
