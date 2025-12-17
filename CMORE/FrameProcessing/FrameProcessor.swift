@@ -58,6 +58,11 @@ extension Array where Element: Comparable {
     }
 }
 
+// MARK: - error types
+fileprivate enum FrameProcessorError: Error {
+    case handBoxProjectionFailed
+}
+
 // MARK: - constants safe to parallel
 fileprivate let handsRequest = DetectHumanHandPoseRequest()
 fileprivate let facesRequest = DetectFaceRectanglesRequest()
@@ -98,13 +103,14 @@ fileprivate func isInvalidBlock(_ block: RecognizedObjectObservation, _ roi: Nor
 }
 
 /// Linear projection of the hand box
-fileprivate func projectHandBox(past: (newer: FrameResult, older: FrameResult), now currentTime: CMTime) -> CGRect {
+fileprivate func projectHandBox(past: (newer: FrameResult, older: FrameResult), now currentTime: CMTime) throws -> CGRect {
     var newerBox = past.newer.hands!.first!.boundingBox.toImageCoordinates(CameraSettings.resolution)
     let olderBox = past.older.hands!.first!.boundingBox.toImageCoordinates(CameraSettings.resolution)
     let deltaTime = (past.newer.presentationTime - past.older.presentationTime)
     
     guard deltaTime < CMTime(value: 1, timescale: 2) else { // make sure results are not more than half seconds apart
-        fatalError("Fail to project hand box: time interval too large")
+        print("Fail to project hand box: time interval too large")
+        throw FrameProcessorError.handBoxProjectionFailed
     }
     
 
@@ -150,7 +156,9 @@ fileprivate func defineBloackROI(by hands: [HumanHandPoseObservation], _ results
             return nil
         }
         
-        let handBox = projectHandBox(past: (last2Hands.last!, last2Hands.first!), now: timestamp)
+        let handBox = try? projectHandBox(past: (last2Hands.last!, last2Hands.first!), now: timestamp)
+        guard let handBox = handBox else { return nil }
+        
         roi = expandHandBox(by: handBox, CGFloat(blockLengthInPixels(scale: currentBox.cmPerPixel)), handedness)
         
     } else {
