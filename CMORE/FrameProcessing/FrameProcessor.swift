@@ -267,9 +267,7 @@ fileprivate func scaleROIcenter(_ center: CGPoint, blockSize: Double) -> Normali
 }
 
 // MARK: - Frame Processor
-/// Making it an actor so only one frame get processed at a time
-/// Handles processing of individual video frames from the camera or video files
-/// Processes frames for face detection and can return frames with bounding boxes drawn
+
 actor FrameProcessor {
     
     nonisolated let onCrossed: (() -> Void) // For sound playing
@@ -282,11 +280,18 @@ actor FrameProcessor {
     }
     
     // MARK: - Stateful properties
+    
     public private(set) var countingBlocks = false
     
     private var results: [FrameResult] = []
     
     private var currentBox: BoxDetection?
+    
+    private var currentState: State = .free
+    
+    private var handedness: HumanHandPoseObservation.Chirality = .right // none nil default
+    
+    // MARK: - computed properties
     
     private var blockSize: Double {
         guard let box = currentBox else { fatalError("No box exist!") }
@@ -331,10 +336,6 @@ actor FrameProcessor {
             }
         }
     }
-    
-    private var currentState: State = .free
-    
-    private var handedness: HumanHandPoseObservation.Chirality = .right // none nil default
     
     // MARK: - Public Methods
     
@@ -429,7 +430,7 @@ actor FrameProcessor {
                     let candidateROI = scaleROIcenter(blockCenter, blockSize: blockSize)
                         
                     // don't append the ROI where it's covered by hand already.
-                    if candidateROI.percentCovered(by: handROI) < 0.7 {
+                    if candidateROI.percentCovered(by: handROI) < 0.8 {
                         result.append(candidateROI)
                     }
                 })
