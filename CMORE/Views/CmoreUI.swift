@@ -75,7 +75,7 @@ struct CmoreUI: View {
                 }
         )
         .alert("Save video?", isPresented: $viewModel.showSaveConfirmation) {
-            Button("Save to Photots") {
+            Button("Save to Photos") {
                 viewModel.saveVideoToPhotos()
                 viewModel.saveResults()
             }
