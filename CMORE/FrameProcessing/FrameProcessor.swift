@@ -267,6 +267,9 @@ fileprivate func scaleROIcenter(_ center: CGPoint, blockSize: Double) -> Normali
 }
 
 fileprivate func isBlockApart(from hand: HumanHandPoseObservation, distanceThreshold: Double, _ blockCenters: [SIMD2<Double>]) -> Bool {
+    
+    guard !blockCenters.isEmpty else { return false }
+    
     let fingerTips = hand.fingerTips.map { joint in
         SIMD2<Double>(
             x: joint.location.x * CameraSettings.resolution.width,
@@ -346,6 +349,7 @@ actor FrameProcessor {
                 }
                 /// crossed back -> crossed
                 if isCrossed(divider:(box["Front divider top"], box["Front top middle"], box["Back divider top"]), hand.fingerTips, handedness: hand.chirality!) {
+                    return.crossed
                 }
                 
             case .detecting:
@@ -359,7 +363,7 @@ actor FrameProcessor {
                 }
             case .crossed:
                 /// crossed -> block released
-                if isBlockApart(from: hand, distanceThreshold: 2 * blockLengthInPixels(scale: box.cmPerPixel), blockCenters) {
+                if isBlockApart(from: hand, distanceThreshold: 1.5 * blockLengthInPixels(scale: box.cmPerPixel), blockCenters) {
                     return .released
                 }
                 
@@ -464,7 +468,7 @@ actor FrameProcessor {
     ///     - timestamp: The presentation time of the frame
     func processFrame(_ pixelBuffer: CVImageBuffer, time timestamp: CMTime) async -> FrameResult {
         
-        var result = FrameResult(presentationTime: timestamp, processingState: currentState, blockTransfered: blockCounts)
+        var result: FrameResult
         
         defer {
             if countingBlocks {
@@ -479,15 +483,22 @@ actor FrameProcessor {
         if !countingBlocks {
             async let box = try? boxRequest.perform(on: ciImage)
             
-            var boxDetected: BoxDetection? = nil
+            var boxDetected: BoxDetection?
             
             if let boxRequestResult = await box as? [CoreMLFeatureValueObservation],
                 let outputArray = boxRequestResult.first?.featureValue.shapedArrayValue(of: Float.self) {
                     boxDetected = BoxDetector.processKeypointOutput(outputArray)
-                    result.boxDetection = boxDetected
                 }
         
-            result.faces = await faces
+            
+            result = FrameResult(
+                presentationTime: timestamp,
+                state: currentState,
+                blockTransfered: blockCounts,
+                faces: await faces,
+                boxDetection: boxDetected
+            )
+            
             return result
         }
         
@@ -495,20 +506,24 @@ actor FrameProcessor {
         guard let currentBox = currentBox else {
             fatalError("Bad Box!")
         }
-        result.boxDetection = currentBox
         
-        async let hands = try? handsRequest.perform(on: ciImage)
-        guard var hands = await hands,
-              hands.count > 0 else {
-            
-            result.faces = await faces
-            return result
-        }
-        result.hands = hands
+        async let allhands = try? handsRequest.perform(on: ciImage)
         
         // MARK: - Filter out the wrong hand
-        hands.removeAll { hand in
-            return hand.chirality != nil && hand.chirality != handedness
+        guard let allhands = await allhands else {
+            result = FrameResult(
+                presentationTime: timestamp,
+                state: currentState,
+                blockTransfered: blockCounts,
+                faces: await faces,
+                boxDetection: currentBox
+            )
+            
+            return result
+        }
+        
+        let hands = allhands.filter { hand in
+            return hand.chirality == nil || hand.chirality == handedness
         }
         
         // MARK: - detect the block
@@ -550,6 +565,7 @@ actor FrameProcessor {
         
         // MARK: - Detect n Process the blocks
         
+        var blockDetections: [BlockDetection] = []
         for await blockDetection in blockDetector.perforAll(on: ciImage, in: blockROIs) {
             var allBlocks = blockDetection
             if var objects = allBlocks.objects {
@@ -559,13 +575,13 @@ actor FrameProcessor {
                 }
                 allBlocks.objects = objects
             }
-            result.blockDetections.append(allBlocks)
+            blockDetections.append(allBlocks)
         }
         
         print("Current state:\(currentState)")
         
-        let nextState = currentState.transition(by: hands, currentBox, result.blockDetections)
-        print("Next state:\(nextState)")
+        let nextState = currentState.transition(by: hands, currentBox, blockDetections)
+        print("Next state: \(nextState)")
         
         if currentState == .detecting && nextState == .crossed {
             Task { @MainActor in
@@ -579,7 +595,17 @@ actor FrameProcessor {
         print("Success count: \(blockCounts)")
         
         currentState = nextState
-        result.faces = await faces
+        
+        result = FrameResult(
+            presentationTime: timestamp,
+            state: currentState,
+            blockTransfered: blockCounts,
+            faces: await faces,
+            boxDetection: currentBox,
+            hands: allhands,
+            blockDetections: blockDetections
+        )
+        
         return result
     }
 }

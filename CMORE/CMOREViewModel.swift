@@ -390,7 +390,6 @@ extension CMOREViewModel: AVCaptureVideoDataOutputSampleBufferDelegate {
         
         // Avoid pile up on frames
         guard numFrameBehind < maxFrameBehind else {
-            print("Current buffered number of frames: \(numFrameBehind)")
             print("Skipped! Frame: \(frameNum)")
             return
         }
@@ -403,14 +402,18 @@ extension CMOREViewModel: AVCaptureVideoDataOutputSampleBufferDelegate {
             print("Fail to get pixel buffer!")
             return
         }
-        
+        numFrameBehind += 1
         // Process the frame
         Task {
-
+            
             let processedResult = await frameProcessor.processFrame(pixelBuffer, time: currentTime)
             
             await MainActor.run {
                 self.overlay = processedResult
+            }
+            
+            self.videoOutputQueue.async { [weak self] in
+                self?.numFrameBehind -= 1
             }
         }
     }

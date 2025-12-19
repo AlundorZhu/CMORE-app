@@ -11,8 +11,8 @@ import Vision
 struct FrameResult: Codable, Comparable {
     @SecondsCoded var presentationTime: CMTime
     
-    /// The state at which processing the this frame
-    let processingState: FrameProcessor.State
+    /// The state after the processing
+    let state: FrameProcessor.State
     let blockTransfered: Int
     var faces: [FaceObservation]?
     var boxDetection: BoxDetection?
