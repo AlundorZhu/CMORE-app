@@ -7,7 +7,6 @@
 
 import UIKit
 import Vision
-import OrderedCollections
 import AVFoundation
 import AudioToolbox
 import UniformTypeIdentifiers
@@ -396,6 +395,7 @@ extension CMOREViewModel: AVCaptureVideoDataOutputSampleBufferDelegate {
             return
         }
         
+        print("Currently \(numFrameBehind) frames behind")
         print("Processing Frame: \(frameNum)")
         
         // Extract the pixel buffer from the sample buffer
@@ -418,6 +418,7 @@ extension CMOREViewModel: AVCaptureVideoDataOutputSampleBufferDelegate {
     func captureOutput(_ output: AVCaptureOutput, didDrop sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
         frameNum += 1
         print("Avfundation Dropped frame: \(frameNum) automatically!")
+        print("Currently \(numFrameBehind) frames behind")
         
         if isRecording && recordingStartTime == nil {
             recordingStartTime = sampleBuffer.presentationTimeStamp

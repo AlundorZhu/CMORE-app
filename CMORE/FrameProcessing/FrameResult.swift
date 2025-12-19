@@ -13,6 +13,7 @@ struct FrameResult: Codable, Comparable {
     
     /// The state at which processing the this frame
     let processingState: FrameProcessor.State
+    let blockTransfered: Int
     var faces: [FaceObservation]?
     var boxDetection: BoxDetection?
     var hands: [HumanHandPoseObservation]?

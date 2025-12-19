@@ -174,7 +174,7 @@ fileprivate func defineBloackROI(by hands: [HumanHandPoseObservation], _ results
 /// - Parameters:
 ///   - divider: Tuple of three points (front/top, front/middle, back/top) as [x, y] in image space.
 ///   - keypoints: Hand joints to test.
-fileprivate func crossed(divider: (Keypoint, Keypoint, Keypoint), _ joints: [Joint], handedness: HumanHandPoseObservation.Chirality) -> Bool {
+fileprivate func isCrossed(divider: (Keypoint, Keypoint, Keypoint), _ joints: [Joint], handedness: HumanHandPoseObservation.Chirality) -> Bool {
     let (frontTop, frontMiddle, backTop) = divider
 
     // Compute the divider's x-position for a given y by clamping to the end points
@@ -266,6 +266,26 @@ fileprivate func scaleROIcenter(_ center: CGPoint, blockSize: Double) -> Normali
         in: CameraSettings.resolution)
 }
 
+fileprivate func isBlockApart(from hand: HumanHandPoseObservation, distanceThreshold: Double, _ blockCenters: [SIMD2<Double>]) -> Bool {
+    let fingerTips = hand.fingerTips.map { joint in
+        SIMD2<Double>(
+            x: joint.location.x * CameraSettings.resolution.width,
+            y: joint.location.y * CameraSettings.resolution.height
+        )
+    }
+
+    let thresholdSquared = distanceThreshold * distanceThreshold
+
+    
+    for blockCenter in blockCenters {
+        // Returns .released ONLY if EVERY fingertip is further than the threshold
+        if fingerTips.allSatisfy({ simd_distance_squared($0, blockCenter) > thresholdSquared }) {
+            return true
+        }
+    }
+    return false
+}
+
 // MARK: - Frame Processor
 
 actor FrameProcessor {
@@ -277,11 +297,86 @@ actor FrameProcessor {
         case detecting
         case crossed
         case crossedBack
+        case released
+        
+        func transition(by hands: [HumanHandPoseObservation], _ box: BoxDetection, _ blockDetections: [BlockDetection]) -> State {
+            guard let hand = hands.first else {
+                return self
+            }
+            
+            /// In frame coordinates
+            var blockCenters: [SIMD2<Double>] {
+                var result: [SIMD2<Double>] = []
+                for detection in blockDetections {
+                    let roi = detection.ROI
+                    
+                    guard let blocks = detection.objects else {
+                        continue
+                    }
+                    
+                    for block in blocks {
+                        result.append(SIMD2<Double>(
+                            x: block.boundingBox.toImageCoordinates(from: roi, imageSize: CameraSettings.resolution).midX,
+                            y: block.boundingBox.toImageCoordinates(from: roi, imageSize: CameraSettings.resolution).midY
+                        ))
+                    }
+                }
+                return result
+            }
+            
+            switch self {
+            case .free: /// free -> detecting
+                if isAbove(of: box["Front divider top"].position.y, hand.fingerTips) {
+                    return .detecting
+                }
+            case .released:
+                /// released -> free
+                if !isAbove(of: max(box["Back top left"].position.y, box["Back top right"].position.y), hand.fingerTips) {
+                    return .free
+                }
+            case .crossedBack:
+                /// crossed back -> block released
+                if isBlockApart(from: hand, distanceThreshold: 2 * blockLengthInPixels(scale: box.cmPerPixel), blockCenters) {
+                    return .released
+                }
+                
+                /// crossed back -> free
+                if !isAbove(of: max(box["Back top left"].position.y, box["Back top right"].position.y), hand.fingerTips) {
+                    return .free
+                }
+                /// crossed back -> crossed
+                if isCrossed(divider:(box["Front divider top"], box["Front top middle"], box["Back divider top"]), hand.fingerTips, handedness: hand.chirality!) {
+                }
+                
+            case .detecting:
+                /// detecting -> free
+                if !isAbove(of: max(box["Back top left"].position.y, box["Back top right"].position.y), hand.fingerTips) {
+                    return .free
+                }
+                /// detecting -> crossed
+                if isCrossed(divider:(box["Front divider top"], box["Front top middle"], box["Back divider top"]), hand.fingerTips, handedness: hand.chirality!) {
+                    return .crossed
+                }
+            case .crossed:
+                /// crossed -> block released
+                if isBlockApart(from: hand, distanceThreshold: 2 * blockLengthInPixels(scale: box.cmPerPixel), blockCenters) {
+                    return .released
+                }
+                
+                /// crossed -> crossed back
+                if !isCrossed(divider:(box["Front divider top"], box["Front top middle"], box["Back divider top"]), hand.fingerTips, handedness: hand.chirality!) {
+                    return .crossedBack
+                }
+            }
+            return self
+        }
     }
     
     // MARK: - Stateful properties
     
     public private(set) var countingBlocks = false
+    
+    public private(set) var blockCounts = 0
     
     private var results: [FrameResult] = []
     
@@ -350,7 +445,7 @@ actor FrameProcessor {
         self.currentBox = box
     }
     
-    func stopCountingBlocks() -> [FrameResult]{
+    func stopCountingBlocks() -> [FrameResult] {
         let resultsOutput = results
         
         // reset states
@@ -358,6 +453,7 @@ actor FrameProcessor {
         results.removeAll()
         currentBox = nil
         currentState = .free
+        blockCounts = 0
         
         return resultsOutput
     }
@@ -368,7 +464,7 @@ actor FrameProcessor {
     ///     - timestamp: The presentation time of the frame
     func processFrame(_ pixelBuffer: CVImageBuffer, time timestamp: CMTime) async -> FrameResult {
         
-        var result = FrameResult(presentationTime: timestamp, processingState: currentState )
+        var result = FrameResult(presentationTime: timestamp, processingState: currentState, blockTransfered: blockCounts)
         
         defer {
             if countingBlocks {
@@ -453,6 +549,7 @@ actor FrameProcessor {
         }
         
         // MARK: - Detect n Process the blocks
+        
         for await blockDetection in blockDetector.perforAll(on: ciImage, in: blockROIs) {
             var allBlocks = blockDetection
             if var objects = allBlocks.objects {
@@ -465,57 +562,25 @@ actor FrameProcessor {
             result.blockDetections.append(allBlocks)
         }
         
-        guard !hands.isEmpty else { // state transistion requires hand detected
-            result.faces = await faces
-            return result
+        print("Current state:\(currentState)")
+        
+        let nextState = currentState.transition(by: hands, currentBox, result.blockDetections)
+        print("Next state:\(nextState)")
+        
+        if currentState == .detecting && nextState == .crossed {
+            Task { @MainActor in
+                self.onCrossed()
+            }
+        } else if (currentState == .crossed && nextState == .released) ||
+        (currentState == .crossedBack && nextState == .released) {
+            blockCounts += 1
         }
         
-        currentState = transition(by: hands.first!)
+        print("Success count: \(blockCounts)")
         
-        print("\(currentState)")
-        
+        currentState = nextState
         result.faces = await faces
         return result
-    }
-    
-    // MARK: - Private Methods
-    
-    private func transition(by hand: HumanHandPoseObservation) -> State {
-        
-        switch currentState {
-        case .free: /// free -> detecting
-            if isAbove(of: currentBox!["Front divider top"].position.y, hand.fingerTips) {
-                return .detecting
-            }
-        case .crossedBack:
-            /// crossed back -> free
-            if !isAbove(of: max(currentBox!["Back top left"].position.y, currentBox!["Back top right"].position.y), hand.fingerTips) {
-                return .free
-            }
-            /// crossed back -> crossed
-            if crossed(divider:(currentBox!["Front divider top"], currentBox!["Front top middle"], currentBox!["Back divider top"]), hand.fingerTips, handedness: hand.chirality!) {
-            }
-            
-        case .detecting:
-            /// detecting -> free
-            if !isAbove(of: max(currentBox!["Back top left"].position.y, currentBox!["Back top right"].position.y), hand.fingerTips) {
-                return .free
-            }
-            /// detecting -> crossed
-            if crossed(divider:(currentBox!["Front divider top"], currentBox!["Front top middle"], currentBox!["Back divider top"]), hand.fingerTips, handedness: hand.chirality!) {
-                // play a sound
-                Task { @MainActor in
-                    self.onCrossed()
-                }
-                return .crossed
-            }
-        case .crossed:
-            if !crossed(divider:(currentBox!["Front divider top"], currentBox!["Front top middle"], currentBox!["Back divider top"]), hand.fingerTips, handedness: hand.chirality!) {
-                return .crossedBack
-            }
-        }
-        
-        return currentState
     }
 }
 
