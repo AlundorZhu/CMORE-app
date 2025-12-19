@@ -38,9 +38,6 @@ struct CMOREView: View {
                         GeometryReader { localGeo in
                             if let overlay = viewModel.overlay {
                                 OverlayView(overlay, localGeo, viewModel.handedness)
-                                
-//                                // display the counts
-//                                overlay.blockTransfered
                             }
                         }
                     }
@@ -69,3 +66,4 @@ struct CMOREView: View {
 #Preview {
     CMOREView(viewModel: CMOREViewModel())
 }
+
