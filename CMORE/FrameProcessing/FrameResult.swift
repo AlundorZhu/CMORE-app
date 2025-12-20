@@ -8,18 +8,24 @@
 import Foundation
 import Vision
 
-struct BlockDetection {
-    let ROI: NormalizedRect
-    var objects: [RecognizedObjectObservation]?
-}
-
-struct FrameResult {
-    /// The state at which processing the this frame
-    let processingState: FrameProcessor.State
-    var faces: [BoundingBoxProviding]?
+struct FrameResult: Codable, Comparable {
+    @SecondsCoded var presentationTime: CMTime
+    
+    /// The state after the processing
+    let state: FrameProcessor.State
+    let blockTransfered: Int
+    var faces: [FaceObservation]?
     var boxDetection: BoxDetection?
     var hands: [HumanHandPoseObservation]?
     var blockDetections: [BlockDetection] = []
+    
+    static func < (lhs: FrameResult, rhs: FrameResult) -> Bool {
+        lhs.presentationTime < rhs.presentationTime
+    }
+    
+    static func == (lhs: FrameResult, rhs: FrameResult) -> Bool {
+        lhs.presentationTime == rhs.presentationTime
+    }
 }
 
 extension HumanHandPoseObservation : @retroactive BoundingBoxProviding {
@@ -38,5 +44,31 @@ extension HumanHandPoseObservation : @retroactive BoundingBoxProviding {
             width: CGFloat(maxX - minX),
             height: CGFloat(maxY - minY)
         )
+    }
+}
+
+struct BlockDetection: Codable {
+    let ROI: NormalizedRect
+    var objects: [RecognizedObjectObservation]?
+}
+
+@propertyWrapper
+struct SecondsCoded: Codable {
+    var wrappedValue: CMTime
+
+    init(wrappedValue: CMTime) {
+        self.wrappedValue = wrappedValue
+    }
+
+    init(from decoder: Decoder) throws {
+        let seconds = try decoder.singleValueContainer().decode(Double.self)
+        // Reconstruct CMTime. You might want to adjust the timescale (600 is common for video)
+        self.wrappedValue = CMTime(seconds: seconds, preferredTimescale: 600)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        // Here we output just the seconds!
+        try container.encode(wrappedValue.seconds)
     }
 }

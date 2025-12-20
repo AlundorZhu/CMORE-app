@@ -12,7 +12,7 @@ let INPUTSIZE = CGSize(width: 640, height: 640)
 // MARK: - BoxDetector
 /// Claude generated
 struct BoxDetector {
-    static func createBoxDetector() -> CoreMLModelContainer {
+    static func createBoxDetectionRequest() -> CoreMLRequest {
         let model = try? KeypointDetector()
         
         guard let boxDetector = model else {
@@ -23,7 +23,10 @@ struct BoxDetector {
             fatalError("Failed to convert KeypointDetector model to MLModelContainer")
         }
         
-        return boxDetectorContainer
+        var request = CoreMLRequest(model: boxDetectorContainer)
+        request.cropAndScaleAction = .scaleToFit
+        
+        return request
     }
     
     
@@ -163,7 +166,7 @@ struct BoxDetector {
 
 // MARK: - Supporting Structures
 
-struct BoxDetection {
+struct BoxDetection: Codable {
     var centerX: Float = 0
     var centerY: Float = 0
     var width: Float = 0
@@ -171,12 +174,22 @@ struct BoxDetection {
     var objectConf: Float = 0
     var keypoints: [Keypoint] = []
     
-    var cmPerPixel: Float {
-        let dividerHeight: Float = 10.0 // cm
+    var cmPerPixel: Double {
+        let dividerHeight: Double = 10.0 // cm
         let keypointHeight = // px
         distance(self["Front divider top"].position, self["Front top middle"].position)
         
-        return dividerHeight / keypointHeight
+        return dividerHeight / Double(keypointHeight)
+    }
+    
+    // Control which properties get saved
+    enum CodingKeys: String, CodingKey {
+        case centerX
+        case centerY
+        case width
+        case height
+        case objectConf
+        case keypoints
     }
     
     private let keypointNames: [String] = ["Front top left", "Front bottom left", "Front top middle", "Front bottom middle", "Front top right", "Front bottom right", "Back divider top", "Front divider top", "Back top left", "Back top right"]
@@ -194,7 +207,7 @@ struct BoxDetection {
     }
 }
 
-struct Keypoint {
+struct Keypoint: Codable {
     let confidence: Float
     var position: SIMD2<Float>
 }

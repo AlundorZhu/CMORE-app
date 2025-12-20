@@ -6,7 +6,6 @@
 //
 
 import UIKit
-import SwiftUI
 import Vision
 import AVFoundation
 import AudioToolbox
@@ -38,6 +37,15 @@ class CMOREViewModel: NSObject, ObservableObject, AVCaptureFileOutputRecordingDe
     /// The URL of the current video being processed (temporary)
     private var currentVideoURL: URL?
     
+    /// Suffix for both saved video and result
+    private var fileNameSuffix: String?
+    
+    /// Timestamp for the start
+    private var recordingStartTime: CMTime?
+    
+    /// The algorithm and ml results for the video
+    private var result: [FrameResult]?
+    
     /// Handles video data output from the camera
     private var videoOutput: AVCaptureVideoDataOutput?
     
@@ -48,7 +56,7 @@ class CMOREViewModel: NSObject, ObservableObject, AVCaptureFileOutputRecordingDe
     private var numFrameBehind: Int = 0
     
     /// Maximum of frames allowed to buffer before droping frames
-    private let maxFrameBehind: Int = 12
+    private let maxFrameBehind: Int = 6
     
     /// Tracks the current frame number
     private var frameNum: UInt = 0
@@ -123,6 +131,41 @@ class CMOREViewModel: NSObject, ObservableObject, AVCaptureFileOutputRecordingDe
             self.currentVideoURL = nil
             self.showSaveConfirmation = false
         }
+    }
+    
+    /// Save the algorithm and ML results to disk
+    func saveResults() {
+        let url = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        
+        guard let fileNameSuffix = fileNameSuffix else { fatalError() }
+        let saveURL = url.appendingPathComponent("CMORE_Results_\(fileNameSuffix).json")
+
+        let encoder = JSONEncoder()
+        
+        guard let result = result, let recordingStartTime = recordingStartTime else { fatalError("no result ready to save!") } // maybe a race condition
+
+        do {
+            let data = try encoder.encode(result.map {
+                var tmp = $0
+                tmp.presentationTime = tmp.presentationTime - recordingStartTime
+                return tmp
+            })
+            try data.write(to: saveURL)
+            print("Results saved to: \(saveURL)")
+        } catch {
+            print("Error saving results: \(error)")
+        }
+        
+        // reset fileName
+        self.fileNameSuffix = nil
+        
+        // reset the startTimestamp
+        self.recordingStartTime = nil
+    }
+    
+    func discardResults() {
+        result = nil
+        fileNameSuffix = nil
     }
     
     /// Starts the camera feed
@@ -272,11 +315,19 @@ class CMOREViewModel: NSObject, ObservableObject, AVCaptureFileOutputRecordingDe
             
         // Create a unique filename for the recorded video
         let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
-        let videoFileName = "CMORE_Recording_\(Date().timeIntervalSince1970).mov"
+        let suffix = Date().timeIntervalSince1970
+        
+        let videoFileName = "CMORE_Recording_\(suffix).mov"
+        fileNameSuffix = String(suffix)
         let outputURL = documentsPath.appendingPathComponent(videoFileName)
         
         // Store the URL for later use
         currentVideoURL = outputURL
+        
+        // Set video orientation to landscape right
+        if let connection = movieOutput.connection(with: .video) {
+            connection.videoRotationAngle = 0.0
+        }
         
         // Start recording with the movie output
         movieOutput.startRecording(to: outputURL, recordingDelegate: self)
@@ -302,7 +353,7 @@ class CMOREViewModel: NSObject, ObservableObject, AVCaptureFileOutputRecordingDe
         
         // Stop the block counting algorithm
         Task {
-            await frameProcessor.stopCountingBlocks()
+            result = await frameProcessor.stopCountingBlocks()
         }
         
         // Stop recording - delegate methods will be called when finished
@@ -323,6 +374,10 @@ extension CMOREViewModel: AVCaptureVideoDataOutputSampleBufferDelegate {
         let currentTime = sampleBuffer.presentationTimeStamp
         frameNum += 1
         
+        if isRecording && recordingStartTime == nil {
+            recordingStartTime = currentTime
+        }
+        
         print(String(repeating: "-", count: 50))
         
         if let last = lastTimestamp {
@@ -335,23 +390,30 @@ extension CMOREViewModel: AVCaptureVideoDataOutputSampleBufferDelegate {
         
         // Avoid pile up on frames
         guard numFrameBehind < maxFrameBehind else {
-            print("Current buffered number of frames: \(numFrameBehind)")
             print("Skipped! Frame: \(frameNum)")
             return
         }
         
+        print("Currently \(numFrameBehind) frames behind")
         print("Processing Frame: \(frameNum)")
         
         // Extract the pixel buffer from the sample buffer
-        guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
-        
+        guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else {
+            print("Fail to get pixel buffer!")
+            return
+        }
+        numFrameBehind += 1
         // Process the frame
         Task {
-
+            
             let processedResult = await frameProcessor.processFrame(pixelBuffer, time: currentTime)
             
             await MainActor.run {
                 self.overlay = processedResult
+            }
+            
+            self.videoOutputQueue.async { [weak self] in
+                self?.numFrameBehind -= 1
             }
         }
     }
@@ -359,6 +421,11 @@ extension CMOREViewModel: AVCaptureVideoDataOutputSampleBufferDelegate {
     func captureOutput(_ output: AVCaptureOutput, didDrop sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
         frameNum += 1
         print("Avfundation Dropped frame: \(frameNum) automatically!")
+        print("Currently \(numFrameBehind) frames behind")
+        
+        if isRecording && recordingStartTime == nil {
+            recordingStartTime = sampleBuffer.presentationTimeStamp
+        }
     }
 }
 

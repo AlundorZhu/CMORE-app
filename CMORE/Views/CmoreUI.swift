@@ -36,7 +36,25 @@ struct CmoreUI: View {
                 .padding(.trailing, 5)
                 
             }
-
+            
+            if let overlay: FrameResult = viewModel.overlay {
+                VStack{
+                    HStack {
+                        Text("\(overlay.blockTransfered)")
+                            .font(.headline)
+                            .foregroundStyle(.white)
+                            .padding(8)
+                            .background(
+                                RoundedRectangle(cornerRadius: 8)
+                                    .fill(.black.opacity(0.5))
+                            )
+                            .padding(.top, 5)
+                            .padding(.leading, 50)
+                        Spacer()
+                    }
+                    Spacer()
+                }
+            }
         }
         .background(Color.clear)
         .contentShape(Rectangle())
@@ -57,11 +75,13 @@ struct CmoreUI: View {
                 }
         )
         .alert("Save video?", isPresented: $viewModel.showSaveConfirmation) {
-            Button("Save to Photots") {
+            Button("Save to Photos") {
                 viewModel.saveVideoToPhotos()
+                viewModel.saveResults()
             }
             Button("Discard", role: .destructive) {
                 viewModel.discardVideo()
+                viewModel.discardResults()
             }
         } message: {
             Text("Would you like to save this recorded video to your Photos library or discard it?")
