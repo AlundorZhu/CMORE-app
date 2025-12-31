@@ -87,65 +87,6 @@ struct CMOREView: View {
                 }
                 CmoreUI(viewModel)
             }
-            
-            // MARK: - Live Preview (fits into available space; no cropping)
-            /*Group {
-                if let frame = viewModel.currentFrame {
-                    Image(uiImage: frame)
-                        .resizable()
-                        .scaledToFit()
-                } else if let session = viewModel.captureSession {
-                    ZStack {
-                        CameraPreviewView(session: session)
-                        GeometryReader { localGeo in
-                            if let overlay = viewModel.overlay {
-                                OverlayView(overlay, localGeo, viewModel.handedness)
-                            }
-                        }
-                    }
-                    .aspectRatio(streamAspect, contentMode: .fit)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else {
-                    Color.black
-                        .aspectRatio(streamAspect, contentMode: .fit)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .overlay(
-                            Text("Camera will appear here")
-                                .foregroundColor(.white)
-                                .font(.title2)
-                        )
-                }
-            }*/
-
-            /*Group {
-                if let session = viewModel.captureSession {
-                    // Live camera preview with overlay in a ZStack
-                    ZStack {
-                        CameraPreviewView(session: session)
-                        
-                        // Face bounding boxes overlay, constrained to the same space as camera preview
-                        GeometryReader { localGeo in
-                            if let overlay = viewModel.overlay {
-                                OverlayView(overlay, localGeo, viewModel.handedness)
-                            }
-                        }
-                    }
-                    .aspectRatio(streamAspect, contentMode: .fit)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else {
-                    // Placeholder when camera is not available yet, maintaining 16:9 fit.
-                    Color.black
-                        .aspectRatio(streamAspect, contentMode: .fit)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .overlay(
-                            Text("Camera will appear here")
-                                .foregroundColor(.white)
-                                .font(.title2)
-                        )
-                }
-            }
-            
-            CmoreUI(viewModel)*/
         }
         .ignoresSafeArea()
     }
