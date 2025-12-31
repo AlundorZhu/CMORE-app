@@ -20,9 +20,17 @@ struct CMOREApp: App {
         // WindowGroup creates the main window for our app
         WindowGroup {
             CMOREView(viewModel: CMORE)
-                .task{
-                    await CMORE.startCamera()
-                }
+                /*.task{
+                    //await CMORE.startCamera()
+                    if let url = Bundle.main.url(forResource: "longer_bb_test", withExtension: "mov") {
+                        do {
+                            try await CMORE.processVideo(url: url)
+                            print("Finished processing video")
+                        } catch {
+                            print("Error processing video: \(error)")
+                        }
+                    }
+                }*/
         }
     }
 }

@@ -19,6 +19,7 @@ class CMOREViewModel: NSObject, ObservableObject, AVCaptureFileOutputRecordingDe
     // MARK: - Published Properties
     // @Published automatically notifies the UI when these values change
     
+    @Published var currentFrame: UIImage?
     /// Whether the camera is currently recording video
     @Published var isRecording = false
     
@@ -488,3 +489,112 @@ extension CMOREViewModel {
     }
 }
 
+extension CMOREViewModel {
+    func extractBox(asset: AVURLAsset, track: AVAssetTrack) async throws -> BoxDetection? {
+        let reader = try AVAssetReader(asset: asset)
+        
+        let outputSettings: [String: Any] = [
+            kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange
+        ]
+        
+        let output = AVAssetReaderTrackOutput(track: track, outputSettings: outputSettings)
+        reader.add(output)
+        reader.startReading()
+        
+        while let sampleBuffer = output.copyNextSampleBuffer() {
+            guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { continue }
+            let time = sampleBuffer.presentationTimeStamp
+            
+            let result = await frameProcessor.processFrame(pixelBuffer, time: time)
+            if let box = result.boxDetection {
+                return box
+            }
+            try await Task.sleep(nanoseconds: 16_667_000)
+        }
+        return nil
+    }
+    
+    func processAllFrames(asset: AVURLAsset, track: AVAssetTrack) async throws {
+        let reader = try AVAssetReader(asset: asset)
+        
+        let outputSettings: [String: Any] = [
+            kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange
+        ]
+        
+        let output = AVAssetReaderTrackOutput(track: track, outputSettings: outputSettings)
+        reader.add(output)
+        reader.startReading()
+        
+        while let sampleBuffer = output.copyNextSampleBuffer() {
+            processVideoFrame(sampleBuffer)
+            try await Task.sleep(nanoseconds: 16_667_000)
+        }
+    }
+    
+    func processVideo(url: URL) async throws {
+        let asset = AVURLAsset(url: url)
+        let tracks = try await asset.loadTracks(withMediaType: .video)
+        guard let track = tracks.first else { return }
+        
+        print("Found video track")
+        
+        guard let box = try await extractBox(asset: asset, track: track) else { return }
+        
+        print("Found the box")
+        
+        // Change as needed
+        await MainActor.run {
+            handedness = .right
+        }
+        
+        Task {
+            await frameProcessor.startCountingBlocks(for: handedness, box: box)
+        }
+        
+        print("Start counting set")
+        
+        try await processAllFrames(asset: asset, track: track)
+        
+        Task {
+            result = await frameProcessor.stopCountingBlocks()
+        }
+    }
+    
+    
+    func processVideoFrame(_ sampleBuffer: CMSampleBuffer) {
+        let currentTime = sampleBuffer.presentationTimeStamp
+        frameNum += 1
+        
+        guard numFrameBehind < maxFrameBehind else {
+            print("Skipped! Frame: \(frameNum)")
+            return
+        }
+        
+        print("Processing Frame: \(frameNum)")
+        
+        guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
+        
+        numFrameBehind += 1
+        
+        Task {
+            
+            let ciImage = CIImage(cvPixelBuffer: pixelBuffer)
+            let context = CIContext()
+            if let cgImage = context.createCGImage(ciImage, from: ciImage.extent) {
+                await MainActor.run {
+                    self.currentFrame = UIImage(cgImage: cgImage)
+                }
+            }
+            
+            let processedResult = await frameProcessor.processFrame(pixelBuffer, time: currentTime)
+            
+            await MainActor.run {
+                self.overlay = processedResult
+            }
+            
+            self.videoOutputQueue.async { [weak self] in
+                self?.numFrameBehind -= 1
+            }
+        }
+    }
+}
