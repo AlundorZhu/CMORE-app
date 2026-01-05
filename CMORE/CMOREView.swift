@@ -22,7 +22,7 @@ struct CMOREView: View {
     // View model driving camera and recording state
     @ObservedObject var viewModel: CMOREViewModel
     @State private var mode: Mode? = nil
-    
+    @State private var showingFilePicker = false
     
     // The target stream aspect ratio (e.g., 1920x1080 = 16:9)
     private var streamAspect: CGFloat {
@@ -46,13 +46,23 @@ struct CMOREView: View {
                     .foregroundColor(.white)
                     .cornerRadius(10)
                     
+                    /*Button("Process Video") {
+                     mode = .video
+                     Task {
+                     if let url = Bundle.main.url(forResource: "longer_bb_test", withExtension: "mov") {
+                     try? await viewModel.processVideo(url: url)
+                     } else {
+                     print("Video not found")
+                     }
+                     
+                     }
+                     }
+                     .padding()
+                     .background(Color.green)
+                     .foregroundColor(.white)
+                     .cornerRadius(10)*/
                     Button("Process Video") {
-                        mode = .video
-                        Task {
-                            if let url = Bundle.main.url(forResource: "longer_bb_test", withExtension: "mov") {
-                                try? await viewModel.processVideo(url: url)
-                            }
-                        }
+                        showingFilePicker = true
                     }
                     .padding()
                     .background(Color.green)
@@ -89,6 +99,31 @@ struct CMOREView: View {
             }
         }
         .ignoresSafeArea()
+        .fileImporter(
+            isPresented: $showingFilePicker,
+            allowedContentTypes: [.movie, .quickTimeMovie],
+            allowsMultipleSelection: false
+        ) { result in
+            switch result {
+            case .success(let urls):
+                guard let url = urls.first else { return }
+                
+                // Request access to the security-scoped resource
+                guard url.startAccessingSecurityScopedResource() else {
+                    print("Failed to access file")
+                    return
+                }
+                
+                mode = .video
+                Task {
+                    try? await viewModel.processVideo(url: url)
+                    url.stopAccessingSecurityScopedResource()  // Release when done
+                }
+                
+            case .failure(let error):
+                print("File picker error: \(error)")
+            }
+        }
     }
 }
 

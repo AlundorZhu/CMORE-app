@@ -491,10 +491,14 @@ extension CMOREViewModel {
 
 extension CMOREViewModel {
     func extractBox(asset: AVURLAsset, track: AVAssetTrack) async throws -> BoxDetection? {
+        print("Inside extractBox")
         let reader = try AVAssetReader(asset: asset)
         
         let outputSettings: [String: Any] = [
-            kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange
+            //kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_420YpCbCr8BiPlanarFullRange
+            //kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange
+            //kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA
+            kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_422YpCbCr8
         ]
         
         let output = AVAssetReaderTrackOutput(track: track, outputSettings: outputSettings)
@@ -512,6 +516,73 @@ extension CMOREViewModel {
             try await Task.sleep(nanoseconds: 16_667_000)
         }
         return nil
+    }
+    
+    func convertVideoToH264(sourceURL: URL) async throws -> URL {
+        print("Inside convertVideoToH264")
+        let asset = AVURLAsset(url: sourceURL)
+        
+        guard let exportSession = AVAssetExportSession(
+            asset: asset, presetName: AVAssetExportPresetHighestQuality) else {
+            throw NSError(domain: "CMORE", code: -1,
+                          userInfo: [NSLocalizedDescriptionKey:
+                                        "Cannot create export session"])
+        }
+        
+        print("defined export session")
+        let outputURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+            .appendingPathExtension("mov")
+        
+        print("created output url")
+        exportSession.outputURL = outputURL
+        exportSession.outputFileType = .mov
+        
+        Task {
+            for await state in exportSession.states(updateInterval: 0.5) {
+                if case .exporting(let progress) = state {
+                    print("Converting: \(Int(progress.fractionCompleted * 100))%")
+                }
+            }
+        }
+        
+        print("calliong export")
+        try await exportSession.export(to: outputURL, as: .mov)
+        print("export returned")
+        
+        print("Successfully converted to H.264: \(outputURL.lastPathComponent)")
+        return outputURL
+    }
+    
+    func needsConversion(url: URL) async throws -> Bool {
+        let asset = AVURLAsset(url: url)
+        let tracks = try await asset.loadTracks(withMediaType: .video)
+        
+        guard let track = tracks.first else {
+            throw NSError(domain: "CMORE", code: -1, userInfo: [NSLocalizedDescriptionKey: "No video track"])
+        }
+        
+        let formatDescriptions = try await track.load(.formatDescriptions)
+        guard let formatDesc = formatDescriptions.first else { return false }
+        
+        let codecType = CMFormatDescriptionGetMediaSubType(formatDesc)
+        
+        // ProRes variants that need conversion
+        let proResCodecs: [FourCharCode] = [
+            kCMVideoCodecType_AppleProRes422,
+            kCMVideoCodecType_AppleProRes4444,
+            kCMVideoCodecType_AppleProRes422HQ,
+            kCMVideoCodecType_AppleProRes422LT,
+            kCMVideoCodecType_AppleProRes422Proxy
+        ]
+        
+        return proResCodecs.contains(codecType)
+    }
+    
+    func cleanupTempFile(convertedURL: URL, originalURL: URL) {
+        if convertedURL != originalURL {
+            try? FileManager.default.removeItem(at: convertedURL)
+        }
     }
     
     func processAllFrames(asset: AVURLAsset, track: AVAssetTrack) async throws {
@@ -532,7 +603,14 @@ extension CMOREViewModel {
     }
     
     func processVideo(url: URL) async throws {
-        let asset = AVURLAsset(url: url)
+        
+        // Check if format is ProRes and convert if so
+        let videoURL = try await needsConversion(url: url)
+                ? try await convertVideoToH264(sourceURL: url)
+                : url
+        
+        
+        let asset = AVURLAsset(url: videoURL)
         let tracks = try await asset.loadTracks(withMediaType: .video)
         guard let track = tracks.first else { return }
         
@@ -558,8 +636,10 @@ extension CMOREViewModel {
         Task {
             result = await frameProcessor.stopCountingBlocks()
         }
+        
+        // delete the new video that was created as part of conversion
+        cleanupTempFile(convertedURL: videoURL, originalURL: url)
     }
-    
     
     func processVideoFrame(_ sampleBuffer: CMSampleBuffer) {
         let currentTime = sampleBuffer.presentationTimeStamp
