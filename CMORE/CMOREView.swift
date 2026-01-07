@@ -46,21 +46,6 @@ struct CMOREView: View {
                     .foregroundColor(.white)
                     .cornerRadius(10)
                     
-                    /*Button("Process Video") {
-                     mode = .video
-                     Task {
-                     if let url = Bundle.main.url(forResource: "longer_bb_test", withExtension: "mov") {
-                     try? await viewModel.processVideo(url: url)
-                     } else {
-                     print("Video not found")
-                     }
-                     
-                     }
-                     }
-                     .padding()
-                     .background(Color.green)
-                     .foregroundColor(.white)
-                     .cornerRadius(10)*/
                     Button("Process Video") {
                         showingFilePicker = true
                     }
