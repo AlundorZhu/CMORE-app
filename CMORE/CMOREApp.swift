@@ -20,9 +20,6 @@ struct CMOREApp: App {
         // WindowGroup creates the main window for our app
         WindowGroup {
             CMOREView(viewModel: CMORE)
-                .task{
-                    await CMORE.startCamera()
-                }
         }
     }
 }
