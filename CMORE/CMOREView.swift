@@ -66,6 +66,8 @@ struct CMOREView: View {
                             }
                         }
                     }
+                    .aspectRatio(streamAspect, contentMode: .fit)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
             } else if mode == .camera {
                 if let session = viewModel.captureSession {
