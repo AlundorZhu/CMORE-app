@@ -468,7 +468,7 @@ actor FrameProcessor {
     /// - Parameters:
     ///     - pixelBuffer: The frame to process
     ///     - timestamp: The presentation time of the frame
-    nonisolated func processFrame(_ pixelBuffer: CVImageBuffer, time timestamp: CMTime, onCompletion handler: @escaping (FrameResult) async -> Void) {
+    nonisolated func processFrame(_ pixelBuffer: CVImageBuffer, time timestamp: CMTime, onCompletion handler: @escaping (FrameResult)  -> Void) {
         
 //        var result: FrameResult
         
@@ -494,7 +494,7 @@ actor FrameProcessor {
                     }
             
                 
-                await handler(FrameResult(
+                handler(FrameResult(
                     presentationTime: timestamp,
                     state: await currentState,
                     blockTransfered: await blockCounts,

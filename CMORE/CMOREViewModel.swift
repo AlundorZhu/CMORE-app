@@ -406,11 +406,12 @@ extension CMOREViewModel: AVCaptureVideoDataOutputSampleBufferDelegate {
         
         // Process the frame
         frameProcessor.processFrame(pixelBuffer, time: currentTime, onCompletion: { result in
-            await MainActor.run {
+            self.numFrameBehind -= 1
+            
+            Task { @MainActor in
                 self.overlay = result
             }
-            
-            self.numFrameBehind -= 1
+
         })
     }
     
