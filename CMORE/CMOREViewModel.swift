@@ -403,19 +403,15 @@ extension CMOREViewModel: AVCaptureVideoDataOutputSampleBufferDelegate {
             return
         }
         numFrameBehind += 1
+        
         // Process the frame
-        Task {
-            
-            let processedResult = await frameProcessor.processFrame(pixelBuffer, time: currentTime)
-            
+        frameProcessor.processFrame(pixelBuffer, time: currentTime, onCompletion: { result in
             await MainActor.run {
-                self.overlay = processedResult
+                self.overlay = result
             }
             
-            self.videoOutputQueue.async { [weak self] in
-                self?.numFrameBehind -= 1
-            }
-        }
+            self.numFrameBehind -= 1
+        })
     }
     
     func captureOutput(_ output: AVCaptureOutput, didDrop sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {

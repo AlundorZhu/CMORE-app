@@ -382,6 +382,8 @@ actor FrameProcessor {
     
     public private(set) var blockCounts = 0
     
+    private var boxLastUpdated: CMTime = .zero
+    
     private var results: [FrameResult] = []
     
     private var currentBox: BoxDetection?
@@ -466,147 +468,153 @@ actor FrameProcessor {
     /// - Parameters:
     ///     - pixelBuffer: The frame to process
     ///     - timestamp: The presentation time of the frame
-    func processFrame(_ pixelBuffer: CVImageBuffer, time timestamp: CMTime) async -> FrameResult {
+    nonisolated func processFrame(_ pixelBuffer: CVImageBuffer, time timestamp: CMTime, onCompletion handler: @escaping (FrameResult) async -> Void) {
         
-        var result: FrameResult
+//        var result: FrameResult
         
-        defer {
-            if countingBlocks {
-                results.insertSorted(result)
-            }
-        }
+//        defer {
+//            if countingBlocks {
+//                results.insertSorted(result)
+//            }
+//        }
         
         let ciImage = CIImage(cvPixelBuffer: pixelBuffer)
-        async let faces = try? facesRequest.perform(on: ciImage)
+//        async let faces = try? facesRequest.perform(on: ciImage)
         
         // MARK: - Before the algorithm starts, locate the box
-        if !countingBlocks {
-            async let box = try? boxRequest.perform(on: ciImage)
-            
-            var boxDetected: BoxDetection?
-            
-            if let boxRequestResult = await box as? [CoreMLFeatureValueObservation],
-                let outputArray = boxRequestResult.first?.featureValue.shapedArrayValue(of: Float.self) {
-                    boxDetected = BoxDetector.processKeypointOutput(outputArray)
-                }
-        
-            
-            result = FrameResult(
-                presentationTime: timestamp,
-                state: currentState,
-                blockTransfered: blockCounts,
-                faces: await faces,
-                boxDetection: boxDetected
-            )
-            
-            return result
-        }
-        
-        // MARK: - The block counting algorithm
-        guard let currentBox = currentBox else {
-            fatalError("Bad Box!")
-        }
-        
-        async let allhands = try? handsRequest.perform(on: ciImage)
-        
-        // MARK: - Filter out the wrong hand
-        guard let allhands = await allhands else {
-            result = FrameResult(
-                presentationTime: timestamp,
-                state: currentState,
-                blockTransfered: blockCounts,
-                faces: await faces,
-                boxDetection: currentBox
-            )
-            
-            return result
-        }
-        
-        let hands = allhands.filter { hand in
-            return hand.chirality == nil || hand.chirality == handedness
-        }
-        
-        // MARK: - detect the block
-        
-        var blockROIs: [NormalizedRect] = []
-        
-        switch currentState {
-            
-        case .crossed: // look for blocks around the hand plus roi follow block
-            
-            if let handROI = defineBloackROI(by: hands, results, timestamp, currentBox, handedness) {
-                blockROIs.append(handROI)
+        Task {
+            if await !countingBlocks {
+                async let box = try? boxRequest.perform(on: ciImage)
                 
-                blockROIs.append(contentsOf: pastBlockCenters.reduce(into: []) { result, blockCenter in
-                    let candidateROI = scaleROIcenter(blockCenter, blockSize: blockSize)
-                        
-                    // don't append the ROI where it's covered by hand already.
-                    if candidateROI.percentCovered(by: handROI) < 0.8 {
-                        result.append(candidateROI)
+                var boxDetected: BoxDetection?
+                
+                if let boxRequestResult = await box as? [CoreMLFeatureValueObservation],
+                    let outputArray = boxRequestResult.first?.featureValue.shapedArrayValue(of: Float.self) {
+                        boxDetected = BoxDetector.processKeypointOutput(outputArray)
                     }
-                })
+            
+                
+                await handler(FrameResult(
+                    presentationTime: timestamp,
+                    state: await currentState,
+                    blockTransfered: await blockCounts,
+                    faces: nil,
+                    boxDetection: boxDetected
+                ))
             }
-            
-        case .detecting: // look for block around the hand
-            
-            if let roi = defineBloackROI(by: hands, results, timestamp, currentBox, handedness) {
-                blockROIs.append(roi)
-            }
-            
-        case .crossedBack: // roi follow block
-            
-            blockROIs.append(contentsOf: pastBlockCenters.map { center in
-                return scaleROIcenter(center, blockSize: blockSize)
-            })
-            
-        default:
-            break
         }
-        
-        // MARK: - Detect n Process the blocks
-        
-        var blockDetections: [BlockDetection] = []
-        for await blockDetection in blockDetector.perforAll(on: ciImage, in: blockROIs) {
-            var allBlocks = blockDetection
-            if var objects = allBlocks.objects {
-                objects.removeAll { block in
-                    isInvalidBlock(block, allBlocks.ROI, basedOn: hands.first, handedness) ||
-                    block.confidence < 0.5
-                }
-                allBlocks.objects = objects
-            }
-            blockDetections.append(allBlocks)
+//
+//        // MARK: - The block counting algorithm
+//        guard let currentBox = currentBox else {
+//            fatalError("Bad Box!")
+//        }
+//        
+//        async let allhands = try? handsRequest.perform(on: ciImage)
+//        
+//        // MARK: - Filter out the wrong hand
+//        guard let allhands = await allhands else {
+//            result = FrameResult(
+//                presentationTime: timestamp,
+//                state: currentState,
+//                blockTransfered: blockCounts,
+//                faces: await faces,
+//                boxDetection: currentBox
+//            )
+//            
+//            return result
+//        }
+//        
+//        let hands = allhands.filter { hand in
+//            return hand.chirality == nil || hand.chirality == handedness
+//        }
+//        
+//        // MARK: - detect the block
+//        
+//        var blockROIs: [NormalizedRect] = []
+//        
+//        switch currentState {
+//            
+//        case .crossed: // look for blocks around the hand plus roi follow block
+//            
+//            if let handROI = defineBloackROI(by: hands, results, timestamp, currentBox, handedness) {
+//                blockROIs.append(handROI)
+//                
+//                blockROIs.append(contentsOf: pastBlockCenters.reduce(into: []) { result, blockCenter in
+//                    let candidateROI = scaleROIcenter(blockCenter, blockSize: blockSize)
+//                        
+//                    // don't append the ROI where it's covered by hand already.
+//                    if candidateROI.percentCovered(by: handROI) < 0.8 {
+//                        result.append(candidateROI)
+//                    }
+//                })
+//            }
+//            
+//        case .detecting: // look for block around the hand
+//            
+//            if let roi = defineBloackROI(by: hands, results, timestamp, currentBox, handedness) {
+//                blockROIs.append(roi)
+//            }
+//            
+//        case .crossedBack: // roi follow block
+//            
+//            blockROIs.append(contentsOf: pastBlockCenters.map { center in
+//                return scaleROIcenter(center, blockSize: blockSize)
+//            })
+//            
+//        default:
+//            break
+//        }
+//        
+//        // MARK: - Detect n Process the blocks
+//        
+//        var blockDetections: [BlockDetection] = []
+//        for await blockDetection in blockDetector.perforAll(on: ciImage, in: blockROIs) {
+//            var allBlocks = blockDetection
+//            if var objects = allBlocks.objects {
+//                objects.removeAll { block in
+//                    isInvalidBlock(block, allBlocks.ROI, basedOn: hands.first, handedness) ||
+//                    block.confidence < 0.5
+//                }
+//                allBlocks.objects = objects
+//            }
+//            blockDetections.append(allBlocks)
+//        }
+//        
+//        print("Current state:\(currentState)")
+//        
+//        let nextState = currentState.transition(by: hands, currentBox, blockDetections)
+//        print("Next state: \(nextState)")
+//        
+//        if currentState == .detecting && nextState == .crossed {
+//            Task { @MainActor in
+//                self.onCrossed()
+//            }
+//        } else if (currentState == .crossed && nextState == .released) ||
+//        (currentState == .crossedBack && nextState == .released) {
+//            blockCounts += 1
+//        }
+//        
+//        print("Success count: \(blockCounts)")
+//        
+//        currentState = nextState
+//        
+//        result = FrameResult(
+//            presentationTime: timestamp,
+//            state: currentState,
+//            blockTransfered: blockCounts,
+//            faces: await faces,
+//            boxDetection: currentBox,
+//            hands: allhands,
+//            blockDetections: blockDetections
+//        )
+//        
+//        return result
+    }
+    
+    private func updateBox(from box: BoxDetection, at time: CMTime) {
+        if boxLastUpdated < time {
+            currentBox = box
         }
-        
-        print("Current state:\(currentState)")
-        
-        let nextState = currentState.transition(by: hands, currentBox, blockDetections)
-        print("Next state: \(nextState)")
-        
-        if currentState == .detecting && nextState == .crossed {
-            Task { @MainActor in
-                self.onCrossed()
-            }
-        } else if (currentState == .crossed && nextState == .released) ||
-        (currentState == .crossedBack && nextState == .released) {
-            blockCounts += 1
-        }
-        
-        print("Success count: \(blockCounts)")
-        
-        currentState = nextState
-        
-        result = FrameResult(
-            presentationTime: timestamp,
-            state: currentState,
-            blockTransfered: blockCounts,
-            faces: await faces,
-            boxDetection: currentBox,
-            hands: allhands,
-            blockDetections: blockDetections
-        )
-        
-        return result
     }
 }
 
