@@ -65,9 +65,7 @@ class CMOREViewModel: NSObject, ObservableObject, AVCaptureFileOutputRecordingDe
     private let videoOutputQueue = DispatchQueue(label: "videoOutputQueue", qos: .userInitiated)
     
     /// Processes each frame through it
-    private let frameProcessor = FrameProcessor(onCross: {
-        AudioServicesPlaySystemSound(1054)
-    })
+    private let frameProcessor: FrameProcessor
     
     /// For fps calculation
     private var lastTimestamp: CMTime?
@@ -78,6 +76,16 @@ class CMOREViewModel: NSObject, ObservableObject, AVCaptureFileOutputRecordingDe
     override init() {
         super.init()
         setupCamera() // Initialize camera when ViewModel is created
+        self.frameProcessor = FrameProcessor(
+            onCross: { AudioServicesPlaySystemSound(1054) },
+            perFrame: { result in
+                self.numFrameBehind -= 1
+                
+                Task { @MainActor in
+                    self.overlay = result
+                }
+            }
+        )
     }
     
     /// Clean up when the ViewModel is destroyed
@@ -405,14 +413,7 @@ extension CMOREViewModel: AVCaptureVideoDataOutputSampleBufferDelegate {
         numFrameBehind += 1
         
         // Process the frame
-        frameProcessor.processFrame(pixelBuffer, time: currentTime, onCompletion: { result in
-            self.numFrameBehind -= 1
-            
-            Task { @MainActor in
-                self.overlay = result
-            }
-
-        })
+        frameProcessor.processFrame(pixelBuffer, time: currentTime)
     }
     
     func captureOutput(_ output: AVCaptureOutput, didDrop sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
