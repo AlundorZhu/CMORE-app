@@ -462,89 +462,69 @@ actor FrameProcessor {
         self.currentBox = box
         
         frameStream = createStream()
-        processingTask = Task {
+        processingTask = Task { [weak self] in
+            guard let self else { return }
             
-            let (resultStream, resultContinuation) = AsyncStream.makeStream(of: (Int, FrameResult, CIImage).self, bufferingPolicy: .unbounded)
-            let drainTask = Task {
-                var buffer = [Int: (FrameResult, CIImage)]()
-                var nextIndex: Int = 0
-                
-                for await (finishedIndex, result, image) in resultStream {
-                    buffer[finishedIndex] = (result, image)
-                    while let (nextResult, frame) = buffer.removeValue(forKey: nextIndex) {
-                        // Process result in-order
+            let (resultStream, resultContinuation) = AsyncStream.makeStream(
+                of: (Int, FrameResult, CIImage).self,
+                bufferingPolicy: .unbounded
+            )
+            
+            // Process stream in parallel and produce
+            let producerTask = Task {
+                await withTaskGroup(of: Void.self) { group in
+                    var currentIndex = 0
+                    
+                    for await (image, timestamp) in frameStream! {
+                        let index = currentIndex
+                        currentIndex += 1
                         
-                        // 4. (optional) detect block
-                        // 5. reason about block count in order
-
-                        nextIndex += 1
+                        let handedness = await self.handedness
+                        let currentState = await self.currentState
+                        
+                        group.addTask {
+                            // 1. Detect the hand
+                            async let allHands = try? handsRequest.perform(on: image)
+                            
+                            // Filter out the wrong hand
+                            guard let allHands = await allHands else {
+                                let result = FrameResult(
+                                    presentationTime: timestamp,
+                                    state: currentState,
+                                    blockTransfered: 0,
+                                    boxDetection: box
+                                )
+                                self.perFrame(result)
+                                resultContinuation.yield((index, result, image))
+                                return
+                            }
+                            
+                            // call perFrame here?
+                        }
                     }
+                }
+                
+                resultContinuation.finish()
+            }
+            
+            // Serial process
+            var buffer = [Int: (FrameResult, CIImage)]()
+            var nextIndex: Int = 0
+                
+            for await (finishedIndex, result, image) in resultStream {
+                buffer[finishedIndex] = (result, image)
+                while let (nextResult, frame) = buffer.removeValue(forKey: nextIndex) {
+                    // Process result in-order
+                    
+                    // 4. (optional) detect block
+                    // 5. reason about block count in order
+
+                    nextIndex += 1
                 }
             }
             
-            var currentIndex = 0
-            // Process stream in parallel
-            for await (image, timestamp) in frameStream! {
-                let index = currentIndex
-                currentIndex += 1
-                
-                Task {
-                    // snapshot the state
-                    let handedness = self.handedness
-                    let box = self.currentBox
-                    var currentState = self.currentState
-                    
-                    // 1. Detect the hand
-                    async let allHands = try? handsRequest.perform(on: image)
-                    
-                    // Filter out the wrong hand
-                    guard let allHands = await allHands else {
-                        let result = FrameResult(
-                            presentationTime: timestamp,
-                            state: currentState,
-                            blockTransfered: 0,
-                            boxDetection: box
-                        )
-                        self.perFrame(result)
-                        resultContinuation.yield((index, result, image))
-                        return
-                    }
-
-                    let hands = allHands.filter { $0.chirality == nil || $0.chirality == handedness }
-                    guard !hands.isEmpty else {
-                        let result = FrameResult(
-                            presentationTime: timestamp,
-                            state: currentState,
-                            blockTransfered: 0,
-                            boxDetection: box
-                        )
-                        self.perFrame(result)
-                        resultContinuation.yield((index, result, image))
-                        return
-                    }
-                    
-                    // 2. state transition
-                    let nextState = currentState.transition(by: hands, box!, [])
-                    if nextState != currentState {
-                        self.updateState(nextState, timestamp)
-                    }
-                    currentState = nextState
-                    
-                    // 3. visualize, decrement
-                    let result = FrameResult(
-                        presentationTime: timestamp,
-                        state: currentState,
-                        boxDetection: box,
-                        hands: hands
-                    )
-                    self.perFrame(result)
-                    
-                    
-                    resultContinuation.yield((index, result, image))
-                }
-            }
-            resultContinuation.finish()
-            await drainTask.value
+            
+            await producerTask.value
         }
     }
     
