@@ -294,7 +294,7 @@ actor FrameProcessor {
     
     nonisolated let onCrossed: () -> Void // For sound playing
     
-    nonisolated let perFrame: (FrameResult) -> Void
+    nonisolated let perFrame: (FrameResult) -> Void // Visualize the frame count and decrement the count to receive new frame
     
     enum State: String, Codable {
         case free
@@ -399,6 +399,8 @@ actor FrameProcessor {
     
     private var handedness: HumanHandPoseObservation.Chirality = .right // none nil default
     
+    private var lastUpdated: CMTime = .zero
+    
     // MARK: - computed properties
     
     private var blockSize: Double {
@@ -461,17 +463,19 @@ actor FrameProcessor {
         
         frameStream = createStream()
         processingTask = Task {
-            await withTaskGroup(of: (Int, FrameResult).self) { group in
-                var buffer = [Int: FrameResult]()
+            await withTaskGroup(of: (Int, FrameResult, CIImage).self) { group in
+                var buffer = [Int: (FrameResult, CIImage)]()
                 var nextIndex: Int = 0
                 var currentIndex: Int = 0
                 
                 // Process result in-order
-                let drainTask = Task {
-                    for await (finishedIndex, result) in group {
-                        buffer[finishedIndex] = result
-                        while let nextResult = buffer.removeValue(forKey: nextIndex) {
-                            // Do something
+                let drainTask = Task { // This has to be another asyncStream
+                    for await (finishedIndex, result, image) in group {
+                        buffer[finishedIndex] = (result, image)
+                        while let (nextResult, frame) = buffer.removeValue(forKey: nextIndex) {
+                            
+                            // 4. (optional) detect block
+                            // 5. reason about block count in order
                             
                             nextIndex += 1
                         }
@@ -484,17 +488,64 @@ actor FrameProcessor {
                     currentIndex += 1
                     
                     group.addTask {
-                        let result = await someWork(image)
-                        return (index, result)
+                        // snapshot the state
+                        let handedness = await self.handedness
+                        let box = await self.currentBox
+                        var currentState = await self.currentState
+                        
+                        // 1. Detect the hand
+                        async let allHands = try? handsRequest.perform(on: image)
+                        
+                        // Filter out the wrong hand
+                        guard let allHands = await allHands else {
+                            let result = FrameResult(
+                                presentationTime: timestamp,
+                                state: currentState,
+                                blockTransfered: 0,
+                                boxDetection: box
+                            )
+                            self.perFrame(result)
+                            return (index, result, image)
+                        }
+                        
+                        let hands = allHands.filter { $0.chirality == nil || $0.chirality == handedness }
+                        guard !hands.isEmpty else {
+                            let result = FrameResult(
+                                presentationTime: timestamp,
+                                state: currentState,
+                                blockTransfered: 0,
+                                boxDetection: box
+                            )
+                            self.perFrame(result)
+                            return (index, result, image)
+                        }
+                        
+                        // 2. state transition
+                        let nextState = currentState.transition(by: hands, box!, [])
+                        if nextState != currentState {
+                            await self.updateState(nextState, timestamp)
+                        }
+                        currentState = nextState
+                        
+                        // 3. visualize, decrement
+                        let result = FrameResult(
+                            presentationTime: timestamp,
+                            state: currentState,
+                            boxDetection: box,
+                            hands: hands
+                        )
+                        self.perFrame(result)
+                        
+                        
+                        return (index, result, image)
                     }
                 }
-                
                 await drainTask.value
             }
         }
     }
     
-    func stopCountingBlocks() -> [FrameResult] {
+    func stopCountingBlocks() async -> [FrameResult] {
         let resultsOutput = results
         
         // reset states
@@ -504,21 +555,14 @@ actor FrameProcessor {
         currentState = .free
         blockCounts = 0
         
-        return resultsOutput
-    }
-    
-    func reorderResult(_ result: FrameResult) {
-        results.insertSorted(result)
-    }
-    
-    func createStream() -> AsyncStream<(CIImage, CMTime)> {
-        guard frameStream == nil else {
-            fatalError("Tried to start a stream when one is already running")
-        }
+        // wait for stream to finish and clean up
+        continuation?.finish()
+        await processingTask?.value
+        continuation = nil
+        frameStream = nil
+        processingTask = nil
         
-        return AsyncStream<(CIImage, CMTime)>(bufferingPolicy: .bufferingNewest(6)) { continuation in
-            self.continuation = continuation
-        }
+        return resultsOutput
     }
     
     /// Processes a single frame from the camera or video
@@ -673,6 +717,31 @@ actor FrameProcessor {
 //            
 //            return result
         }
+    }
+    
+    // MARK: - Private functions
+    
+    private func createStream() -> AsyncStream<(CIImage, CMTime)> {
+        guard frameStream == nil else {
+            fatalError("Tried to start a stream when one is already running")
+        }
+        
+        return AsyncStream<(CIImage, CMTime)>(bufferingPolicy: .bufferingNewest(6)) { continuation in
+            self.continuation = continuation
+        }
+    }
+    
+    private func updateState(_ newState: State, _ timestamp: CMTime) {
+        
+        // guarantee states moves with time
+        guard timestamp > lastUpdated else {
+            return
+        }
+        
+        if newState == .crossed && self.currentState != .crossed {
+            onCrossed()
+        }
+        currentState = newState
     }
     
     private func updateBox(from box: BoxDetection, at time: CMTime) {

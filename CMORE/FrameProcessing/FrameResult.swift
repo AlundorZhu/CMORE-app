@@ -12,8 +12,8 @@ struct FrameResult: Codable, Comparable {
     @SecondsCoded var presentationTime: CMTime
     
     /// The state after the processing
-    let state: FrameProcessor.State
-    let blockTransfered: Int
+    var state: FrameProcessor.State
+    var blockTransfered: Int?
     var faces: [FaceObservation]?
     var boxDetection: BoxDetection?
     var hands: [HumanHandPoseObservation]?
