@@ -65,7 +65,7 @@ class CMOREViewModel: NSObject, ObservableObject, AVCaptureFileOutputRecordingDe
     private let videoOutputQueue = DispatchQueue(label: "videoOutputQueue", qos: .userInitiated)
     
     /// Processes each frame through it
-    private let frameProcessor: FrameProcessor
+    private var frameProcessor: FrameProcessor!
     
     /// For fps calculation
     private var lastTimestamp: CMTime?
