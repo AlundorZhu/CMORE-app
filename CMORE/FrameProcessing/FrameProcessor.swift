@@ -597,7 +597,7 @@ actor FrameProcessor {
                     // Save the result
                     nextResult.state = nextState
                     nextResult.blockDetections = blockDetections
-                    
+                    await appendResult(nextResult)
 
                     nextIndex += 1
                 }
@@ -618,6 +618,8 @@ actor FrameProcessor {
         frameStream = nil
         processingTask = nil
         
+        let resultsToReturn = results
+        
         // reset states
         countingBlocks = false
         results.removeAll()
@@ -625,7 +627,7 @@ actor FrameProcessor {
         currentState = .free
         blockCounts = 0
         
-        return results
+        return resultsToReturn
     }
     
     /// Processes a single frame from the camera or video
@@ -812,7 +814,7 @@ actor FrameProcessor {
         }
     }
     
-    private func saveResult(_ result: FrameResult) {
+    private func appendResult(_ result: FrameResult) {
         results.append(result)
     }
 }
