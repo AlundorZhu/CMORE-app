@@ -330,12 +330,14 @@ actor FrameProcessor {
             
             switch self {
             case .free: /// free -> detecting
-                if isAbove(of: box["Front divider top"].position.y, hand.fingerTips) {
+                if isAbove(of: box["Front divider top"].position.y, hand.fingerTips) &&
+                    !isCrossed(divider:(box["Front divider top"], box["Front top middle"], box["Back divider top"]), hand.fingerTips, handedness: hand.chirality!) {
                     return .detecting
                 }
             case .released:
                 /// released -> free
-                if !isAbove(of: max(box["Back top left"].position.y, box["Back top right"].position.y), hand.fingerTips) {
+                if !isAbove(of: max(box["Back top left"].position.y, box["Back top right"].position.y), hand.fingerTips) &&
+                    !isCrossed(divider:(box["Front divider top"], box["Front top middle"], box["Back divider top"]), hand.fingerTips, handedness: hand.chirality!) {
                     return .free
                 }
             case .crossedBack:
@@ -355,7 +357,8 @@ actor FrameProcessor {
                 
             case .detecting:
                 /// detecting -> free
-                if !isAbove(of: max(box["Back top left"].position.y, box["Back top right"].position.y), hand.fingerTips) {
+                if !isAbove(of: max(box["Back top left"].position.y, box["Back top right"].position.y), hand.fingerTips) &&
+                    !isCrossed(divider:(box["Front divider top"], box["Front top middle"], box["Back divider top"]), hand.fingerTips, handedness: hand.chirality!) {
                     return .free
                 }
                 /// detecting -> crossed
