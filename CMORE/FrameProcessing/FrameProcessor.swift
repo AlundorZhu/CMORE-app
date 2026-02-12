@@ -306,9 +306,11 @@ fileprivate func isBlockApart(from hand: HumanHandPoseObservation, distanceThres
 // MARK: - Frame Processor
 actor FrameProcessor {
     
-    nonisolated let onCrossed: () -> Void // For sound playing
+    // MARK: - Callbacks
     
-    nonisolated let perFrame: (FrameResult) -> Void // Visualize the frame count and decrement the count to receive new frame
+    nonisolated let onCrossed: (() -> Void)! // For sound playing
+    
+    nonisolated let perFrame: ((FrameResult) -> Void)! // Visualize the frame count and decrement the count to receive new frame
     
     enum State: String, Codable {
         case free

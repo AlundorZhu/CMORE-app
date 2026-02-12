@@ -21,16 +21,16 @@ class CameraManager: NSObject, AVCaptureFileOutputRecordingDelegate {
     // MARK: - Callbacks
 
     /// Called on the videoOutputQueue when a new frame arrives
-    var onFrameCaptured: ((CVPixelBuffer, CMTime) -> Void)?
+    var onFrameCaptured: ((CVPixelBuffer, CMTime) -> Void)!
 
     /// Called on the videoOutputQueue when AVFoundation drops a frame
-    var onFrameDropped: ((CMTime) -> Void)?
+    var onFrameDropped: ((CMTime) -> Void)!
 
     /// Called (on main) when movie file recording finishes
-    var onRecordingFinished: ((URL, Error?) -> Void)?
+    var onRecordingFinished: ((URL, Error?) -> Void)!
 
     /// Called (on main) after a Photos-library save attempt completes
-    var onVideoSavedToPhotos: ((Error?) -> Void)?
+    var onVideoSavedToPhotos: ((Error?) -> Void)!
 
     // MARK: - Private Properties
 
