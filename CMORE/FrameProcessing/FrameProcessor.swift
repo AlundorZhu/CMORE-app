@@ -69,6 +69,20 @@ fileprivate let facesRequest = DetectFaceRectanglesRequest()
 fileprivate let blockDetector = BlockDetector()
 fileprivate let boxRequest = BoxDetector.createBoxDetectionRequest()
 
+/// Detected and filter out the wrong hand by handedness, nil handedness are kepts
+fileprivate func detectnFilterHands(in image: CIImage, _ handedness: HumanHandPoseObservation.Chirality) async -> [HumanHandPoseObservation]? {
+    guard let allHands = try? await handsRequest.perform(on: image) else {
+        return nil
+    }
+    let hands = allHands.filter { hand in
+        return hand.chirality == nil || hand.chirality == handedness
+    }
+    guard !hands.isEmpty else {
+        return nil
+    }
+    return hands
+}
+
 // MARK: - Pure functions
 /// Returns true if any joints if above the horizon. Assume y increase upwards
 fileprivate func isAbove(of horizon: Float, _ keypoints: [Joint]) -> Bool {
@@ -493,38 +507,15 @@ actor FrameProcessor {
                         currentIndex += 1
 
                         var result = FrameResult(presentationTime: timestamp, state: .free , boxDetection: box)
-                        let handedness = await self.handedness
-                        let decrementNProduce: (FrameResult) -> Void = {
-                            self.perFrame($0)
-                            resultContinuation.yield((index, $0, image))
-                        }
-                        
+                        let currentHandedness = await self.handedness
+
                         group.addTask {
-                            
-                            defer {
-                                decrementNProduce(result)
-                            }
-                            
-                            // 1. Detect the hand
-                            async let allHands = try? handsRequest.perform(on: image)
-                            
-                            // Filter out the wrong hand
-                            guard let allHands = await allHands else {
-                                return
-                            }
-                            let hands = allHands.filter { hand in
-                                return hand.chirality == nil || hand.chirality == handedness
-                            }
-                            guard !hands.isEmpty else {
-                                return
-                            }
-                            
-                            result.hands = hands
-                            return
+                            result.hands = await detectnFilterHands(in: image, currentHandedness)
+                            self.perFrame(result)
+                            resultContinuation.yield((index, result, image))
                         }
                     }
                 }
-                
                 resultContinuation.finish()
             }
             
@@ -548,7 +539,6 @@ actor FrameProcessor {
                     // Define block detection ROI
                     var blockROIs: [NormalizedRect] = []
                     switch await currentState {
-        
                     case .crossed: // look for blocks around the hand plus roi follow block
                         if let handROI = defineBloackROI(by: hands, await results, timestamp, currentBox, handedness) {
                             blockROIs.append(handROI)
@@ -675,16 +665,6 @@ actor FrameProcessor {
     }
     
     // MARK: - Private functions
-    
-    private func createStream() -> AsyncStream<(CIImage, CMTime)> {
-        guard frameStream == nil else {
-            fatalError("Tried to start a stream when one is already running")
-        }
-        
-        return AsyncStream<(CIImage, CMTime)>(bufferingPolicy: .bufferingNewest(6)) { continuation in
-            self.continuation = continuation
-        }
-    }
     
     private func updateState(_ newState: State) {
         if newState == .crossed && self.currentState != .crossed {
