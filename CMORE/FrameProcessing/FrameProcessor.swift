@@ -583,7 +583,9 @@ actor FrameProcessor {
                         blockDetections.append(allBlocks)
                     }
                     let nextState = await currentState.transition(by: hands, currentBox, blockDetections)
+                    
                     await self.updateState(nextState)
+                    nextResult.blockTransfered = await self.blockCounts
                     
                     // Save the result
                     nextResult.state = nextState
