@@ -62,8 +62,8 @@ struct SecondsCoded: Codable {
 
     init(from decoder: Decoder) throws {
         let seconds = try decoder.singleValueContainer().decode(Double.self)
-        // Reconstruct CMTime. You might want to adjust the timescale (600 is common for video)
-        self.wrappedValue = CMTime(seconds: seconds, preferredTimescale: 600)
+        // Reconstruct CMTime. You might want to adjust the timescale (nanosecond)
+        self.wrappedValue = CMTime(seconds: seconds, preferredTimescale: 1_000_000_000)
     }
 
     func encode(to encoder: Encoder) throws {

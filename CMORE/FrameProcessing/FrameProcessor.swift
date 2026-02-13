@@ -265,7 +265,6 @@ actor FrameProcessor {
         }
         frameStream = stream
         
-        
         processingTask = Task { [weak self] in
             guard let self else { return }
             
