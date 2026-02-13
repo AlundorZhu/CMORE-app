@@ -97,3 +97,97 @@ enum BlockCountingState: String, Codable {
         return self
     }
 }
+
+/// Returns true if any fingertip crosses the divider polyline.
+/// - Parameters:
+///   - divider: Tuple of three points (front/top, front/middle, back/top) as [x, y] in image space.
+///   - keypoints: Hand joints to test.
+func isCrossed(divider: (Keypoint, Keypoint, Keypoint), _ joints: [Joint], handedness: HumanHandPoseObservation.Chirality) -> Bool {
+    let (frontTop, frontMiddle, backTop) = divider
+
+    // Compute the divider's x-position for a given y by clamping to the end points
+    // and linearly interpolating between them.
+    func dividerX(at y: Float) -> Float {
+        let start: SIMD2<Float>
+        let end: SIMD2<Float>
+        
+        if y <= frontTop.position.y {
+            // Case A: Top Section
+            start = frontTop.position
+            end = frontMiddle.position
+        }
+        else if y >= backTop.position.y {
+            // Case B: Bottom Section (Parallel Projection)
+            // Vector Math: Calculate direction (B - A) and add to C
+            // No manual loops needed; SIMD handles the subtraction/addition.
+            let direction = frontMiddle.position - frontTop.position
+            
+            start = backTop.position
+            end = backTop.position + direction
+        }
+        else {
+            // Case C: Middle Section
+            start = frontTop.position
+            end = backTop.position
+        }
+        
+        // 2. Solve for X
+        // Calculate vertical progress 't' (0.0 to 1.0)
+        let dy = end.y - start.y
+        
+        // Safety: Avoid division by zero
+        guard abs(dy) > .leastNormalMagnitude else { return start.x }
+        
+        let t = (y - start.y) / dy
+        
+        // 3. Built-in Interpolation
+        // simd_mix(a, b, t) is the hardware-optimized version of "a + (b - a) * t"
+        return simd_mix(start.x, end.x, t)
+    }
+
+    return joints.contains { joint in
+        let x = Float(joint.location.x * CameraSettings.resolution.width)
+        let y = Float(joint.location.y * CameraSettings.resolution.height)
+        switch handedness {
+            case .left:
+                return x < dividerX(at: y)
+            case .right:
+                return x > dividerX(at: y)
+            @unknown default:
+                fatalError("Unknown handedness")
+        }
+    }
+}
+
+/// Returns true if any joints if above the horizon. Assume y increase upwards
+func isAbove(of horizon: Float, _ keypoints: [Joint]) -> Bool {
+    for joint in keypoints {
+        if Float(joint.location.y * CameraSettings.resolution.height) > horizon {
+            return true
+        }
+    }
+    return false
+}
+
+func isBlockApart(from hand: HumanHandPoseObservation, distanceThreshold: Double, _ blockCenters: [SIMD2<Double>]) -> Bool {
+    
+    guard !blockCenters.isEmpty else { return false }
+    
+    let fingerTips = hand.fingerTips.map { joint in
+        SIMD2<Double>(
+            x: joint.location.x * CameraSettings.resolution.width,
+            y: joint.location.y * CameraSettings.resolution.height
+        )
+    }
+
+    let thresholdSquared = distanceThreshold * distanceThreshold
+
+    
+    for blockCenter in blockCenters {
+        // Returns .released ONLY if EVERY fingertip is further than the threshold
+        if fingerTips.allSatisfy({ simd_distance_squared($0, blockCenter) > thresholdSquared }) {
+            return true
+        }
+    }
+    return false
+}
