@@ -18,13 +18,10 @@ class CameraManager: NSObject, AVCaptureFileOutputRecordingDelegate {
     /// Whether the movie output is currently recording
     var isRecording: Bool { movieOutput?.isRecording ?? false }
 
+    /// The async stream of camera frames, created when the camera starts
+    private(set) var frameStream: AsyncStream<(CIImage, CMTime)>?
+
     // MARK: - Callbacks
-
-    /// Called on the videoOutputQueue when a new frame arrives
-    var onFrameCaptured: ((CVPixelBuffer, CMTime) -> Void)!
-
-    /// Called on the videoOutputQueue when AVFoundation drops a frame
-    var onFrameDropped: ((CMTime) -> Void)!
 
     /// Called (on main) when movie file recording finishes
     var onRecordingFinished: ((URL, Error?) -> Void)!
@@ -33,10 +30,13 @@ class CameraManager: NSObject, AVCaptureFileOutputRecordingDelegate {
     var onVideoSavedToPhotos: ((Error?) -> Void)!
 
     // MARK: - Private Properties
-
+    
+    private var frameNum: UInt = 0
+    private var lastTimestamp: CMTime?
     private var videoOutput: AVCaptureVideoDataOutput?
     private var movieOutput: AVCaptureMovieFileOutput?
     private let videoOutputQueue = DispatchQueue(label: "videoOutputQueue", qos: .userInitiated)
+    private var frameContinuation: AsyncStream<(CIImage, CMTime)>.Continuation?
 
     // MARK: - Setup
 
@@ -100,13 +100,22 @@ class CameraManager: NSObject, AVCaptureFileOutputRecordingDelegate {
             print("Capture session not available")
             return
         }
+
+        let (stream, continuation) = AsyncStream.makeStream(
+            of: (CIImage, CMTime).self,
+            bufferingPolicy: .bufferingNewest(FrameProcessingThresholds.frameBufferSize)
+        )
+        self.frameStream = stream
+        self.frameContinuation = continuation
+
         captureSession.startRunning()
     }
 
     func stop() {
-        Task {
-            captureSession?.stopRunning()
-        }
+        frameContinuation?.finish()
+        frameContinuation = nil
+        frameStream = nil
+        captureSession?.stopRunning()
     }
 
     // MARK: - Recording
@@ -207,11 +216,39 @@ extension CameraManager: AVCaptureVideoDataOutputSampleBufferDelegate {
             return
         }
 
-        onFrameCaptured?(pixelBuffer, currentTime)
+        let ciImage = CIImage(cvPixelBuffer: pixelBuffer)
+        let yieldResult = frameContinuation?.yield((ciImage, currentTime))
+        
+        print(String(repeating: "-", count: 50))
+        print("Frame number: \(frameNum)")
+        frameNum += 1
+        
+        #if DEBUG
+        switch yieldResult {
+        case .dropped(_):
+            print("Dropped oldest frame in the queue")
+        case .enqueued(let remaining):
+            print("Currently \(remaining) frames behind")
+            
+            if let last = lastTimestamp {
+                let delta = (currentTime - last).seconds
+                let actualFps = 1.0 / delta
+                print("Actual FPS: \(actualFps)")
+            }
+        case .terminated:
+            print("Stream terminated")
+            frameNum = 0
+        case .none:
+            fallthrough
+        @unknown default:
+            break
+        }
+        #endif // DEBUG
     }
 
     func captureOutput(_ output: AVCaptureOutput, didDrop sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
         let currentTime = sampleBuffer.presentationTimeStamp
-        onFrameDropped?(currentTime)
+        print("AVFoundation dropped \(frameNum)th frame at \(currentTime.seconds)s")
+        frameNum += 1
     }
 }

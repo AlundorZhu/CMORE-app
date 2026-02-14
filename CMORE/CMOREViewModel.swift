@@ -46,20 +46,8 @@ class CMOREViewModel: ObservableObject {
     /// The algorithm and ml results for the video
     private var result: [FrameResult]?
 
-    /// Number of frames currently waiting to get processed
-    private var numFrameBehind: Int = 0
-
-    /// Maximum of frames allowed to buffer before droping frames
-    private let maxFrameBehind: Int = 6
-
-    /// Tracks the current frame number
-    private var frameNum: UInt = 0
-
     /// Processes each frame through it
     private var frameProcessor: FrameProcessor!
-
-    /// For fps calculation
-    private var lastTimestamp: CMTime?
 
     // MARK: - Initialization
 
@@ -68,56 +56,18 @@ class CMOREViewModel: ObservableObject {
 
         self.frameProcessor = FrameProcessor(
             onCross: { AudioServicesPlaySystemSound(1054) },
-            perFrame: { result in
-                self.numFrameBehind -= 1
+            perFrame: { [weak self] result in
+                guard let self else { return }
+
+                if self.isRecording && self.recordingStartTime == nil {
+                    self.recordingStartTime = result.presentationTime
+                }
 
                 Task { @MainActor in
                     self.overlay = result
                 }
             }
         )
-
-        cameraManager.onFrameCaptured = { [weak self] pixelBuffer, currentTime in
-            guard let self else { return }
-
-            self.frameNum += 1
-
-            if self.isRecording && self.recordingStartTime == nil {
-                self.recordingStartTime = currentTime
-            }
-
-            print(String(repeating: "-", count: 50))
-
-            if let last = self.lastTimestamp {
-                let delta = CMTimeGetSeconds(currentTime - last)
-                let actualFPS = 1.0 / delta
-                print("Actual FPS: \(actualFPS)")
-            }
-
-            self.lastTimestamp = currentTime
-
-            guard self.numFrameBehind < self.maxFrameBehind else {
-                print("Skipped! Frame: \(self.frameNum)")
-                return
-            }
-
-            print("Currently \(self.numFrameBehind) frames behind")
-            print("Processing Frame: \(self.frameNum)")
-
-            self.numFrameBehind += 1
-            self.frameProcessor.processFrame(pixelBuffer, time: currentTime)
-        }
-
-        cameraManager.onFrameDropped = { [weak self] currentTime in
-            guard let self else { return }
-            self.frameNum += 1
-            print("Avfundation Dropped frame: \(self.frameNum) automatically!")
-            print("Currently \(self.numFrameBehind) frames behind")
-
-            if self.isRecording && self.recordingStartTime == nil {
-                self.recordingStartTime = currentTime
-            }
-        }
 
         cameraManager.onRecordingFinished = { [weak self] url, error in
             guard let self else { return }
@@ -220,9 +170,13 @@ class CMOREViewModel: ObservableObject {
         fileNameSuffix = nil
     }
 
-    /// Starts the camera feed
+    /// Starts the camera feed and begins frame processing
     func startCamera() async {
         await cameraManager.start()
+
+        if let stream = cameraManager.frameStream {
+            await frameProcessor.startProcessing(stream: stream)
+        }
     }
 
     // MARK: - Private Methods
