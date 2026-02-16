@@ -136,6 +136,7 @@ class CMOREViewModel: NSObject, ObservableObject, AVCaptureFileOutputRecordingDe
     
     /// Save the algorithm and ML results to disk
     func saveResults() {
+        print("inside save Results")
         let url = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
         
         guard let fileNameSuffix = fileNameSuffix else { fatalError() }
@@ -491,13 +492,9 @@ extension CMOREViewModel {
 
 extension CMOREViewModel {
     func extractBox(asset: AVURLAsset, track: AVAssetTrack) async throws -> BoxDetection? {
-        print("Inside extractBox")
         let reader = try AVAssetReader(asset: asset)
         
         let outputSettings: [String: Any] = [
-            //kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_420YpCbCr8BiPlanarFullRange
-            //kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange
-            //kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA
             kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_422YpCbCr8
         ]
         
@@ -513,12 +510,14 @@ extension CMOREViewModel {
             if let box = result.boxDetection {
                 return box
             }
-            try await Task.sleep(nanoseconds: 16_667_000)
         }
         return nil
     }
     
     func processAllFrames(asset: AVURLAsset, track: AVAssetTrack) async throws {
+        let suffix = Date().timeIntervalSince1970
+        fileNameSuffix = String(suffix)
+        
         let reader = try AVAssetReader(asset: asset)
         
         let outputSettings: [String: Any] = [
@@ -530,9 +529,11 @@ extension CMOREViewModel {
         reader.startReading()
         
         while let sampleBuffer = output.copyNextSampleBuffer() {
-            processVideoFrame(sampleBuffer)
-            try await Task.sleep(nanoseconds: 16_667_000)
+            await processVideoFrame(sampleBuffer)
         }
+        
+        result = await frameProcessor.stopCountingBlocks()
+        saveResults()
     }
     
     func processVideo(url: URL) async throws {
@@ -566,22 +567,17 @@ extension CMOREViewModel {
         
     }
     
-    func processVideoFrame(_ sampleBuffer: CMSampleBuffer) {
+    func processVideoFrame(_ sampleBuffer: CMSampleBuffer) async {
         let currentTime = sampleBuffer.presentationTimeStamp
         frameNum += 1
         
-        guard numFrameBehind < maxFrameBehind else {
-            print("Skipped! Frame: \(frameNum)")
-            return
+        if recordingStartTime == nil {
+            recordingStartTime = currentTime
         }
         
         print("Processing Frame: \(frameNum)")
         
         guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
-        
-        numFrameBehind += 1
-        
-        Task {
             
             let ciImage = CIImage(cvPixelBuffer: pixelBuffer)
             let context = CIContext()
@@ -596,10 +592,5 @@ extension CMOREViewModel {
             await MainActor.run {
                 self.overlay = processedResult
             }
-            
-            self.videoOutputQueue.async { [weak self] in
-                self?.numFrameBehind -= 1
-            }
-        }
     }
 }

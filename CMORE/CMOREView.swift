@@ -105,6 +105,7 @@ struct CMOREView: View {
                 Task {
                     try? await viewModel.processVideo(url: url)
                     url.stopAccessingSecurityScopedResource()  // Release when done
+                    mode = nil
                 }
                 
             case .failure(let error):
