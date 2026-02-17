@@ -56,15 +56,15 @@ class CameraManager: NSObject, AVCaptureFileOutputRecordingDelegate {
 
             camera.unlockForConfiguration()
 
+            #if DEBUG
             print("Selected video format: \(camera.activeFormat)")
             print("Min frame duration: \(camera.activeVideoMinFrameDuration)")
             print("Max frame duration: \(camera.activeVideoMaxFrameDuration)")
-
             let shutterSpeed = camera.exposureDuration.seconds
             print("Shutter Speed: 1/\(Int(1 / shutterSpeed)) seconds")
-
             let actualFrameRate = 1.0 / camera.activeVideoMinFrameDuration.seconds
             print("Frame Rate: \(actualFrameRate) fps")
+            #endif
 
             captureSession = AVCaptureSession()
             captureSession?.sessionPreset = .inputPriority
@@ -95,6 +95,9 @@ class CameraManager: NSObject, AVCaptureFileOutputRecordingDelegate {
     }
 
     func start() async {
+        #if DEBUG
+        print("Camera manager: start")
+        #endif
         guard captureSession?.isRunning != true else { return }
         guard let captureSession = captureSession else {
             print("Capture session not available")
@@ -112,6 +115,9 @@ class CameraManager: NSObject, AVCaptureFileOutputRecordingDelegate {
     }
 
     func stop() {
+        #if DEBUG
+        print("Camera manager: stop")
+        #endif
         frameContinuation?.finish()
         frameContinuation = nil
         frameStream = nil
