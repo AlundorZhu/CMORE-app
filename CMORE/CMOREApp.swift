@@ -11,21 +11,34 @@ import UIKit
 // MARK: - Orientation Control
 
 /// Controls which orientations are allowed at any given time.
-/// Set to landscape-only when entering the camera view, reset when leaving.
+/// Defaults to all, switches to landscape when entering the camera view.
+@MainActor
 class OrientationManager {
     static let shared = OrientationManager()
-    var lockToLandscape = false
+    private(set) var orientationMask: UIInterfaceOrientationMask = .all
+
+    func setOrientation(_ mask: UIInterfaceOrientationMask) {
+        orientationMask = mask
+        guard let scene = UIApplication.shared.connectedScenes
+            .first(where: { $0.activationState == .foregroundActive }) as? UIWindowScene else {
+            return
+        }
+
+        scene.requestGeometryUpdate(.iOS(interfaceOrientations: mask)) { error in
+            print("Orientation update failed: \(error)")
+        }
+
+        scene.windows.first?.rootViewController?.setNeedsUpdateOfSupportedInterfaceOrientations()
+    }
 }
 
+@MainActor
 class AppDelegate: NSObject, UIApplicationDelegate {
     func application(
         _ application: UIApplication,
         supportedInterfaceOrientationsFor window: UIWindow?
     ) -> UIInterfaceOrientationMask {
-        if OrientationManager.shared.lockToLandscape {
-            return .landscapeRight
-        }
-        return .all
+        return OrientationManager.shared.orientationMask
     }
 }
 

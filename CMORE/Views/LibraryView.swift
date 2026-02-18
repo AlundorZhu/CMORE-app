@@ -83,17 +83,13 @@ struct CameraContainerView: View {
             }
             .navigationBarBackButtonHidden(true)
             .onAppear {
-                OrientationManager.shared.lockToLandscape = true
-                // Force the device to rotate to landscape right
-                if let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene {
-                    scene.requestGeometryUpdate(.iOS(interfaceOrientations: .landscapeRight))
+                Task { @MainActor in
+                    OrientationManager.shared.setOrientation(.landscapeRight)
                 }
             }
             .onDisappear {
-                OrientationManager.shared.lockToLandscape = false
-                // Allow rotation back to current device orientation
-                if let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene {
-                    scene.requestGeometryUpdate(.iOS(interfaceOrientations: .all))
+                Task { @MainActor in
+                    OrientationManager.shared.setOrientation(.all)
                 }
             }
             .onChange(of: viewModel.showSaveConfirmation) { wasShowing, isShowing in
