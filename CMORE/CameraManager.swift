@@ -234,7 +234,7 @@ extension CameraManager: AVCaptureVideoDataOutputSampleBufferDelegate {
         case .dropped(_):
             print("Camera Stream: Dropped oldest frame in the queue, currently full with \(FrameProcessingThresholds.frameBufferSize + 1) frames")
         case .enqueued(let remaining):
-            print("Camera Stream: Currently \(remaining) frames in the queue")
+            print("Camera Stream: Currently \(remaining) slots remaining in the buffer queue")
             
             if let last = lastTimestamp {
                 let delta = (currentTime - last).seconds

@@ -29,7 +29,7 @@ enum FrameProcessingThresholds {
     static let maxProjectionInterval: CMTime = CMTime(value: 1, timescale: 2)
 
     /// Maximum frames buffered in the CameraManager's AsyncStream before newest-wins
-    static let frameBufferSize: Int = 1
+    static let frameBufferSize: Int = 6
     
     /// Maximum number of image process task processed concurrently
     static let maxConcurrentTasks: Int = 6
