@@ -24,6 +24,7 @@ struct LibraryView: View {
                 }
             }
             .navigationTitle("Library")
+            .onAppear { viewModel.loadSessions() }
             .overlay(alignment: .bottom) {
                 NavigationLink {
                     CameraContainerView()

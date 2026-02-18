@@ -79,14 +79,6 @@ class CMOREViewModel: ObservableObject {
                 self.showSaveConfirmation = true
             }
         }
-
-        cameraManager.onVideoSavedToPhotos = { error in
-            if let error = error {
-                print("Error: Failed to save video: \(error.localizedDescription)")
-            } else {
-                print("Video saved to Photos!")
-            }
-        }
     }
 
     deinit {
@@ -117,57 +109,67 @@ class CMOREViewModel: ObservableObject {
         }
     }
 
-    /// Saves the pending video to Photos library (called when user confirms)
-    func saveVideoToPhotos() {
-        guard let videoURL = currentVideoURL else { return }
-        cameraManager.saveVideoToPhotos(videoURL)
-        currentVideoURL = nil
-        showSaveConfirmation = false
-    }
-
-    /// Discards the pending video (called when user declines)
-    func discardVideo() {
-        guard let videoURL = currentVideoURL else { return }
-
-        try? FileManager.default.removeItem(at: videoURL)
-
-        Task { @MainActor in
-            print("Video discarded")
-            self.currentVideoURL = nil
-            self.showSaveConfirmation = false
+    /// Saves the recording as a session (video stays in Documents, results written to JSON)
+    func saveSession() {
+        guard let videoURL = currentVideoURL,
+              let fileNameSuffix = fileNameSuffix,
+              let result = result,
+              let recordingStartTime = recordingStartTime else {
+            print("Error: missing data for session save")
+            return
         }
-    }
 
-    /// Save the algorithm and ML results to disk
-    func saveResults() {
-        let url = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-
-        guard let fileNameSuffix = fileNameSuffix else { fatalError() }
-        let saveURL = url.appendingPathComponent("CMORE_Results_\(fileNameSuffix).json")
-
-        let encoder = JSONEncoder()
-
-        guard let result = result, let recordingStartTime = recordingStartTime else { fatalError("no result ready to save!") }
+        // Save results JSON
+        let documentsDir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let resultsFileName = "CMORE_Results_\(fileNameSuffix).json"
+        let resultsURL = documentsDir.appendingPathComponent(resultsFileName)
 
         do {
-            let data = try encoder.encode(result.map {
+            let data = try JSONEncoder().encode(result.map {
                 var tmp = $0
                 tmp.presentationTime = tmp.presentationTime - recordingStartTime
                 return tmp
             })
-            try data.write(to: saveURL)
-            print("Results saved to: \(saveURL)")
+            try data.write(to: resultsURL)
         } catch {
             print("Error saving results: \(error)")
         }
 
+        // Compute block count from results
+        let blockCount = result.compactMap(\.blockTransfered).max() ?? 0
+
+        // Create and persist the session
+        let session = Session(
+            id: UUID(),
+            date: Date(),
+            blockCount: blockCount,
+            videoFileName: videoURL.lastPathComponent,
+            resultsFileName: resultsFileName
+        )
+        SessionStore.shared.add(session)
+
+        // Clean up state
+        self.currentVideoURL = nil
+        self.result = nil
         self.fileNameSuffix = nil
         self.recordingStartTime = nil
+        self.showSaveConfirmation = false
     }
 
-    func discardResults() {
+    /// Discards the pending recording (video file + in-memory results)
+    func discardSession() {
+        if let videoURL = currentVideoURL {
+            try? FileManager.default.removeItem(at: videoURL)
+        }
+
+        currentVideoURL = nil
         result = nil
         fileNameSuffix = nil
+        recordingStartTime = nil
+
+        Task { @MainActor in
+            self.showSaveConfirmation = false
+        }
     }
 
     /// Starts the camera feed and begins frame processing

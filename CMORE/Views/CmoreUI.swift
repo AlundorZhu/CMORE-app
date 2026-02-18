@@ -74,17 +74,15 @@ struct CmoreUI: View {
                     }
                 }
         )
-        .alert("Save video?", isPresented: $viewModel.showSaveConfirmation) {
-            Button("Save to Photos") {
-                viewModel.saveVideoToPhotos()
-                viewModel.saveResults()
+        .alert("Save session?", isPresented: $viewModel.showSaveConfirmation) {
+            Button("Save") {
+                viewModel.saveSession()
             }
             Button("Discard", role: .destructive) {
-                viewModel.discardVideo()
-                viewModel.discardResults()
+                viewModel.discardSession()
             }
         } message: {
-            Text("Would you like to save this recorded video to your Photos library or discard it?")
+            Text("Save this recording to your library?")
         }
     }
 }
