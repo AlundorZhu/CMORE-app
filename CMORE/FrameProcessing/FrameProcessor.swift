@@ -252,10 +252,6 @@ actor FrameProcessor {
                 for await (image, timestamp) in stream {
                     guard let self, !Task.isCancelled else { break }
                     
-                    #if DEBUG
-                    print("Frame Processor: processing \(activeTasks) frames concurrently")
-                    #endif
-                    
                     if activeTasks >= maxConcurrentTasks {
                         await group.next()
                         activeTasks -= 1

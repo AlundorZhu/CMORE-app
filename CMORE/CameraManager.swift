@@ -232,7 +232,7 @@ extension CameraManager: AVCaptureVideoDataOutputSampleBufferDelegate {
         #if DEBUG
         switch yieldResult {
         case .dropped(_):
-            print("Camera Stream: Dropped oldest frame in the queue")
+            print("Camera Stream: Dropped oldest frame in the queue, currently full with \(FrameProcessingThresholds.frameBufferSize + 1) frames")
         case .enqueued(let remaining):
             print("Camera Stream: Currently \(remaining) frames in the queue")
             
