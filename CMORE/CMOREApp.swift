@@ -6,23 +6,37 @@
 //
 
 import SwiftUI
+import UIKit
+
+// MARK: - Orientation Control
+
+/// Controls which orientations are allowed at any given time.
+/// Set to landscape-only when entering the camera view, reset when leaving.
+class OrientationManager {
+    static let shared = OrientationManager()
+    var lockToLandscape = false
+}
+
+class AppDelegate: NSObject, UIApplicationDelegate {
+    func application(
+        _ application: UIApplication,
+        supportedInterfaceOrientationsFor window: UIWindow?
+    ) -> UIInterfaceOrientationMask {
+        if OrientationManager.shared.lockToLandscape {
+            return .landscapeRight
+        }
+        return .all
+    }
+}
 
 // MARK: - Main App Entry Point
-// The @main attribute tells Swift this is where the app starts
 @main
 struct CMOREApp: App {
-    
-    /// @StateObject make it persist through "the App" here
-    @StateObject var CMORE = CMOREViewModel()
-    
-    // The body property defines what appears when the app launches
+    @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
+
     var body: some Scene {
-        // WindowGroup creates the main window for our app
         WindowGroup {
-            CMOREView(viewModel: CMORE)
-                .task{
-                    await CMORE.startCamera()
-                }
+            LibraryView()
         }
     }
 }
