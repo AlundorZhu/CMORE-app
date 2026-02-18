@@ -232,17 +232,18 @@ extension CameraManager: AVCaptureVideoDataOutputSampleBufferDelegate {
         #if DEBUG
         switch yieldResult {
         case .dropped(_):
-            print("Dropped oldest frame in the queue")
+            print("Camera Stream: Dropped oldest frame in the queue")
         case .enqueued(let remaining):
-            print("Currently \(remaining) frames behind")
+            print("Camera Stream: Currently \(remaining) frames in the queue")
             
             if let last = lastTimestamp {
                 let delta = (currentTime - last).seconds
                 let actualFps = 1.0 / delta
                 print("Actual FPS: \(actualFps)")
             }
+            lastTimestamp = currentTime
         case .terminated:
-            print("Stream terminated")
+            print("Camera Stream: Stream terminated")
             frameNum = 0
         case .none:
             fallthrough
