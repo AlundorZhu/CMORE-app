@@ -1,2 +1,6 @@
+# User data
 CMORE.xcodeproj/xcuserdata
 CMORE.xcodeproj/project.xcworkspace/xcuserdata
+
+# Test resources
+CMORETests/TestResources/*
