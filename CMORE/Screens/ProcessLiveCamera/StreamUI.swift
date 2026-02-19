@@ -8,13 +8,13 @@
 import SwiftUI
 import Vision
 
-struct CmoreUI: View {
+struct StreamUI: View {
     
-    init(_ viewModel: CMOREViewModel) {
+    init(_ viewModel: StreamViewModel) {
         self.viewModel = viewModel
     }
     
-    @ObservedObject var viewModel: CMOREViewModel
+    @ObservedObject var viewModel: StreamViewModel
     
     var body: some View {
         ZStack {
@@ -172,6 +172,6 @@ struct HandednessIndicator: View {
 }
 
 #Preview("UI"){
-    CmoreUI(CMOREViewModel())
+    StreamUI(StreamViewModel())
 }
 

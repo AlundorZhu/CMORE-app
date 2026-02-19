@@ -143,11 +143,11 @@ private struct SessionRow: View {
 
 // MARK: - Camera Container
 struct CameraContainerView: View {
-    @StateObject private var viewModel = CMOREViewModel()
+    @StateObject private var viewModel = StreamViewModel()
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
-        CMOREView(viewModel: viewModel)
+        StreamView(viewModel: viewModel)
             .task {
                 await viewModel.startCamera()
             }

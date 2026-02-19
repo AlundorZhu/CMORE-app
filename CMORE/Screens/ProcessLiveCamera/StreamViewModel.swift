@@ -9,10 +9,7 @@ import Vision
 import AVFoundation
 import AudioToolbox
 
-// MARK: - VideoStreamViewModel
-/// This class manages camera recording functionality with a simplified interface
-/// It uses the MVVM (Model-View-ViewModel) pattern to separate business logic from UI
-class CMOREViewModel: ObservableObject {
+class StreamViewModel: ObservableObject {
     // MARK: - Published Properties
 
     /// Whether the camera is currently recording video
