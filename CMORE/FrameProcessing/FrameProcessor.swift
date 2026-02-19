@@ -10,54 +10,6 @@ import CoreImage
 import Vision
 import simd
 
-extension HumanHandPoseObservation {
-    var fingerTips: [Joint] {
-        [.thumbTip, .indexTip, .middleTip, .ringTip, .littleTip]
-            .compactMap { joint(for: $0) }
-    }
-}
-
-extension NormalizedRect {
-    func percentCovered(by other: NormalizedRect) -> CGFloat {
-        // 1. Calculate Intersection (same as above)
-        let x1 = max(self.origin.x, other.origin.x)
-        let y1 = max(self.origin.y, other.origin.y)
-        let x2 = min(self.origin.x + self.width, other.origin.x + other.width)
-        let y2 = min(self.origin.y + self.height, other.origin.y + other.height)
-        
-        let intersectionArea = max(0, x2 - x1) * max(0, y2 - y1)
-        
-        // 2. Calculate Self Area
-        let selfArea = self.width * self.height
-        
-        // 3. Return Percentage
-        return selfArea > 0 ? intersectionArea / selfArea : 0.0
-    }
-}
-
-extension Array where Element: Comparable {
-    mutating func insertSorted(_ element: Element) {
-
-        if let last = self.last, element >= last {
-            self.append(element)
-            return
-        }
-        
-        // Binary search for the correct insertion index
-        var low = 0
-        var high = self.count
-        while low < high {
-            let mid = low + (high - low) / 2
-            if self[mid] < element {
-                low = mid + 1
-            } else {
-                high = mid
-            }
-        }
-        self.insert(element, at: low)
-    }
-}
-
 // MARK: - error types
 fileprivate enum FrameProcessorError: Error {
     case handBoxProjectionFailed
@@ -69,16 +21,21 @@ fileprivate let facesRequest = DetectFaceRectanglesRequest()
 fileprivate let blockDetector = BlockDetector()
 fileprivate let boxRequest = BoxDetector.createBoxDetectionRequest()
 
-// MARK: - Pure functions
-/// Returns true if any joints if above the horizon. Assume y increase upwards
-fileprivate func isAbove(of horizon: Float, _ keypoints: [Joint]) -> Bool {
-    for joint in keypoints {
-        if Float(joint.location.y * CameraSettings.resolution.height) > horizon {
-            return true
-        }
+/// Detected and filter out the wrong hand by handedness, nil handedness are kepts
+fileprivate func detectnFilterHands(in image: CIImage, _ handedness: HumanHandPoseObservation.Chirality) async -> [HumanHandPoseObservation]? {
+    guard let allHands = try? await handsRequest.perform(on: image) else {
+        return nil
     }
-    return false
+    let hands = allHands.filter { hand in
+        return hand.chirality == nil || hand.chirality == handedness
+    }
+    guard !hands.isEmpty else {
+        return nil
+    }
+    return hands
 }
+
+// MARK: - Pure functions
 
 /// Returns true if the block is above the wrist and on the right side of left hand (vice versa)
 fileprivate func isInvalidBlock(_ block: RecognizedObjectObservation, _ roi: NormalizedRect, basedOn hand: HumanHandPoseObservation?, _ handedness: HumanHandPoseObservation.Chirality) -> Bool {
@@ -108,7 +65,7 @@ fileprivate func projectHandBox(past: (newer: FrameResult, older: FrameResult), 
     let olderBox = past.older.hands!.first!.boundingBox.toImageCoordinates(CameraSettings.resolution)
     let deltaTime = (past.newer.presentationTime - past.older.presentationTime)
     
-    guard deltaTime < CMTime(value: 1, timescale: 2) else { // make sure results are not more than half seconds apart
+    guard deltaTime < FrameProcessingThresholds.maxProjectionInterval else {
         print("Fail to project hand box: time interval too large")
         throw FrameProcessorError.handBoxProjectionFailed
     }
@@ -131,12 +88,12 @@ fileprivate func defineBloackROI(by hands: [HumanHandPoseObservation], _ results
     func expandHandBox(by handBox: CGRect, _ blockSize: CGFloat, _ chirality: HumanHandPoseObservation.Chirality) -> NormalizedRect {
         var roi = handBox
         
-        roi.origin.y -=  blockSize * 2
-        roi.size.width += blockSize * 2
-        roi.size.height += blockSize * 2
+        roi.origin.y -=  blockSize * FrameProcessingThresholds.handBoxExpansionMultiplier
+        roi.size.width += blockSize * FrameProcessingThresholds.handBoxExpansionMultiplier
+        roi.size.height += blockSize * FrameProcessingThresholds.handBoxExpansionMultiplier
         
         if chirality == .left {
-            roi.origin.x -= blockSize * 2
+            roi.origin.x -= blockSize * FrameProcessingThresholds.handBoxExpansionMultiplier
         }
         
         // right hand don't move the origin.x but extend the width
@@ -148,7 +105,7 @@ fileprivate func defineBloackROI(by hands: [HumanHandPoseObservation], _ results
     
     if hands.isEmpty {
         let last2Hands = results
-            .lazy
+            .lazy 
             .filter { $0.hands != nil && $0.hands!.count > 0 }
             .suffix(2)
         
@@ -170,66 +127,6 @@ fileprivate func defineBloackROI(by hands: [HumanHandPoseObservation], _ results
     return roi
 }
 
-/// Returns true if any fingertip crosses the divider polyline.
-/// - Parameters:
-///   - divider: Tuple of three points (front/top, front/middle, back/top) as [x, y] in image space.
-///   - keypoints: Hand joints to test.
-fileprivate func isCrossed(divider: (Keypoint, Keypoint, Keypoint), _ joints: [Joint], handedness: HumanHandPoseObservation.Chirality) -> Bool {
-    let (frontTop, frontMiddle, backTop) = divider
-
-    // Compute the divider's x-position for a given y by clamping to the end points
-    // and linearly interpolating between them.
-    func dividerX(at y: Float) -> Float {
-        let start: SIMD2<Float>
-        let end: SIMD2<Float>
-        
-        if y <= frontTop.position.y {
-            // Case A: Top Section
-            start = frontTop.position
-            end = frontMiddle.position
-        }
-        else if y >= backTop.position.y {
-            // Case B: Bottom Section (Parallel Projection)
-            // Vector Math: Calculate direction (B - A) and add to C
-            // No manual loops needed; SIMD handles the subtraction/addition.
-            let direction = frontMiddle.position - frontTop.position
-            
-            start = backTop.position
-            end = backTop.position + direction
-        }
-        else {
-            // Case C: Middle Section
-            start = frontTop.position
-            end = backTop.position
-        }
-        
-        // 2. Solve for X
-        // Calculate vertical progress 't' (0.0 to 1.0)
-        let dy = end.y - start.y
-        
-        // Safety: Avoid division by zero
-        guard abs(dy) > .leastNormalMagnitude else { return start.x }
-        
-        let t = (y - start.y) / dy
-        
-        // 3. Built-in Interpolation
-        // simd_mix(a, b, t) is the hardware-optimized version of "a + (b - a) * t"
-        return simd_mix(start.x, end.x, t)
-    }
-
-    return joints.contains { joint in
-        let x = Float(joint.location.x * CameraSettings.resolution.width)
-        let y = Float(joint.location.y * CameraSettings.resolution.height)
-        switch handedness {
-            case .left:
-                return x < dividerX(at: y)
-            case .right:
-                return x > dividerX(at: y)
-            @unknown default:
-                fatalError("Unknown handedness")
-        }
-    }
-}
 
 /// Calculate the running average of past block bounding box centers
 fileprivate func runningAverage(_ detections: [BlockDetection]) -> CGPoint? {
@@ -258,356 +155,277 @@ fileprivate func runningAverage(_ detections: [BlockDetection]) -> CGPoint? {
 fileprivate func scaleROIcenter(_ center: CGPoint, blockSize: Double) -> NormalizedRect {
     return NormalizedRect(
         imageRect: CGRect(
-            x: center.x - 2 * blockSize,
-            y: center.y - 2 * blockSize,
-            width: 4 * blockSize,
-            height: 4 * blockSize
+            x: center.x - FrameProcessingThresholds.blockCenterROIMultiplier * blockSize,
+            y: center.y - FrameProcessingThresholds.blockCenterROIMultiplier * blockSize,
+            width: 2 * FrameProcessingThresholds.blockCenterROIMultiplier * blockSize,
+            height: 2 * FrameProcessingThresholds.blockCenterROIMultiplier * blockSize
         ),
         in: CameraSettings.resolution)
 }
 
-fileprivate func isBlockApart(from hand: HumanHandPoseObservation, distanceThreshold: Double, _ blockCenters: [SIMD2<Double>]) -> Bool {
-    
-    guard !blockCenters.isEmpty else { return false }
-    
-    let fingerTips = hand.fingerTips.map { joint in
-        SIMD2<Double>(
-            x: joint.location.x * CameraSettings.resolution.width,
-            y: joint.location.y * CameraSettings.resolution.height
-        )
-    }
-
-    let thresholdSquared = distanceThreshold * distanceThreshold
-
-    
-    for blockCenter in blockCenters {
-        // Returns .released ONLY if EVERY fingertip is further than the threshold
-        if fingerTips.allSatisfy({ simd_distance_squared($0, blockCenter) > thresholdSquared }) {
-            return true
-        }
-    }
-    return false
-}
-
 // MARK: - Frame Processor
-
 actor FrameProcessor {
-    
-    nonisolated let onCrossed: (() -> Void) // For sound playing
-    
-    enum State: String, Codable {
-        case free
-        case detecting
-        case crossed
-        case crossedBack
-        case released
-        
-        func transition(by hands: [HumanHandPoseObservation], _ box: BoxDetection, _ blockDetections: [BlockDetection]) -> State {
-            guard let hand = hands.first else {
-                return self
-            }
-            
-            /// In frame coordinates
-            var blockCenters: [SIMD2<Double>] {
-                var result: [SIMD2<Double>] = []
-                for detection in blockDetections {
-                    let roi = detection.ROI
-                    
-                    guard let blocks = detection.objects else {
-                        continue
-                    }
-                    
-                    for block in blocks {
-                        result.append(SIMD2<Double>(
-                            x: block.boundingBox.toImageCoordinates(from: roi, imageSize: CameraSettings.resolution).midX,
-                            y: block.boundingBox.toImageCoordinates(from: roi, imageSize: CameraSettings.resolution).midY
-                        ))
-                    }
-                }
-                return result
-            }
-            
-            switch self {
-            case .free: /// free -> detecting
-                if isAbove(of: box["Front divider top"].position.y, hand.fingerTips) {
-                    return .detecting
-                }
-            case .released:
-                /// released -> free
-                if !isAbove(of: max(box["Back top left"].position.y, box["Back top right"].position.y), hand.fingerTips) {
-                    return .free
-                }
-            case .crossedBack:
-                /// crossed back -> block released
-                if isBlockApart(from: hand, distanceThreshold: 2 * blockLengthInPixels(scale: box.cmPerPixel), blockCenters) {
-                    return .released
-                }
-                
-                /// crossed back -> free
-                if !isAbove(of: max(box["Back top left"].position.y, box["Back top right"].position.y), hand.fingerTips) {
-                    return .free
-                }
-                /// crossed back -> crossed
-                if isCrossed(divider:(box["Front divider top"], box["Front top middle"], box["Back divider top"]), hand.fingerTips, handedness: hand.chirality!) {
-                    return.crossed
-                }
-                
-            case .detecting:
-                /// detecting -> free
-                if !isAbove(of: max(box["Back top left"].position.y, box["Back top right"].position.y), hand.fingerTips) {
-                    return .free
-                }
-                /// detecting -> crossed
-                if isCrossed(divider:(box["Front divider top"], box["Front top middle"], box["Back divider top"]), hand.fingerTips, handedness: hand.chirality!) {
-                    return .crossed
-                }
-            case .crossed:
-                /// crossed -> block released
-                if isBlockApart(from: hand, distanceThreshold: 1.5 * blockLengthInPixels(scale: box.cmPerPixel), blockCenters) {
-                    return .released
-                }
-                
-                /// crossed -> crossed back
-                if !isCrossed(divider:(box["Front divider top"], box["Front top middle"], box["Back divider top"]), hand.fingerTips, handedness: hand.chirality!) {
-                    return .crossedBack
-                }
-            }
-            return self
-        }
-    }
-    
+
+    // MARK: - Callbacks
+
+    nonisolated let onCrossed: (() -> Void)!
+    nonisolated let perFrame: ((FrameResult) -> Void)!
+
     // MARK: - Stateful properties
-    
+
     public private(set) var countingBlocks = false
-    
     public private(set) var blockCounts = 0
-    
+
+    private var boxLastUpdated: CMTime = .zero
     private var results: [FrameResult] = []
-    
+
+    /// Single persistent stream consumer — never cancelled/restarted
+    private var mainTask: Task<Void, Never>?
+
+    /// Counting pipeline tasks
+    private var processingTask: Task<Void, Never>?
+
+    /// Feeds frames into the counting pipeline when countingBlocks == true
+    private var resultContinuation: AsyncStream<(Int, FrameResult, CIImage)>.Continuation?
+
+    /// Used for reordering the results
+    private var currentIndex: Int = 0
+
     private var currentBox: BoxDetection?
-    
-    private var currentState: State = .free
-    
-    private var handedness: HumanHandPoseObservation.Chirality = .right // none nil default
-    
-    // MARK: - computed properties
-    
+    private var currentState: BlockCountingState = .free
+    private var handedness: HumanHandPoseObservation.Chirality = .right
+
+    // MARK: - Computed properties
+
     private var blockSize: Double {
         guard let box = currentBox else { fatalError("No box exist!") }
         return blockLengthInPixels(scale: box.cmPerPixel)
     }
-    
-    // Return ROIs centered on past blocks
+
     private var pastBlockCenters: [CGPoint] {
-        
-        // look in the last 6 frames to find one where we detected some blocks
-        guard let recentDetection = results.suffix(6).last(where: {
+        guard let recentDetection = results.suffix(FrameProcessingThresholds.recentFrameLookback).last(where: {
             !$0.blockDetections.isEmpty &&
             !$0.blockDetections.compactMap { $0.objects }.isEmpty
         }) else { return [] }
-        
+
         let minDistanceSq = (2*blockSize) * (2*blockSize)
-        
+
         return recentDetection.blockDetections.reduce(into: [CGPoint]()) { points, detection in
-            // Handle the optional 'objects' array safely using simple coalescence
             guard let blocks = detection.objects else { return }
-            
+
             for block in blocks {
-                // 1. Calculate the candidate point
                 let rect = block.boundingBox.toImageCoordinates(
                     from: detection.ROI,
                     imageSize: CameraSettings.resolution
                 )
                 let candidate = CGPoint(x: rect.midX, y: rect.midY)
                 let candidateVec = SIMD2<Double>(x: candidate.x, y: candidate.y)
-                
-                // 2. Check immediately against the points we have accepted SO FAR
-                // (No second iteration needed, we check as we build)
+
                 let isTooClose = points.contains { existingPoint in
                     let existingVec = SIMD2<Double>(x: existingPoint.x, y: existingPoint.y)
                     return simd_distance_squared(candidateVec, existingVec) < minDistanceSq
                 }
-                
-                // 3. Add only if valid
+
                 if !isTooClose {
                     points.append(candidate)
                 }
             }
         }
     }
-    
+
     // MARK: - Public Methods
-    
-    init(onCross: @escaping () -> Void) {
-        /// When crossing the bivider
+
+    init(onCross: @escaping () -> Void, perFrame: @escaping (FrameResult) -> Void) {
         self.onCrossed = onCross
+        self.perFrame = perFrame
+    }
+
+    /// Start consuming the camera frame stream. A single for-await loop runs for the
+    /// stream's entire lifetime, dispatching frames based on the current mode.
+    func startProcessing(stream: AsyncStream<(CIImage, CMTime)>) {
+        mainTask = Task { [weak self] in
+            
+            let maxConcurrentTasks = FrameProcessingThresholds.maxConcurrentTasks
+            await withTaskGroup(of: Void.self) { group in
+                var activeTasks = 0
+                
+                for await (image, timestamp) in stream {
+                    guard let self, !Task.isCancelled else { break }
+                    
+                    if activeTasks >= maxConcurrentTasks {
+                        await group.next()
+                        activeTasks -= 1
+                    }
+
+                    if await self.countingBlocks {
+                        let index = await self.currentIndex
+                        await self.incrementIdx()
+                        
+                        group.addTask {
+                            var partialResults = FrameResult(presentationTime: timestamp, state: .free, boxDetection: await self.currentBox)
+                            let currentHandedness = await self.handedness
+                            
+                            partialResults.hands = await detectnFilterHands(in: image, currentHandedness)
+                            self.perFrame(partialResults)
+                            await self.resultContinuation?.yield((index, partialResults, image))
+                        }
+                    } else {
+                        // Pre-counting: box detection for overlay
+                        group.addTask {
+                            var boxDetected: BoxDetection?
+                            if let boxRequestResult = try? await boxRequest.perform(on: image) as? [CoreMLFeatureValueObservation],
+                               let outputArray = boxRequestResult.first?.featureValue.shapedArrayValue(of: Float.self) {
+                                boxDetected = BoxDetector.processKeypointOutput(outputArray)
+                            }
+
+                            self.perFrame(FrameResult(
+                                presentationTime: timestamp,
+                                boxDetection: boxDetected
+                            ))
+                        }
+                    }
+                    activeTasks += 1
+                }
+            }
+        }
     }
     
+    func incrementIdx() {
+        currentIndex += 1
+    }
+
     func startCountingBlocks(for handedness: HumanHandPoseObservation.Chirality, box: BoxDetection) {
         self.handedness = handedness
         self.countingBlocks = true
         self.currentBox = box
-    }
-    
-    func stopCountingBlocks() -> [FrameResult] {
-        let resultsOutput = results
+        self.currentIndex = 0
+
+        // Create reordering stream
+        let (stream, continuation) = AsyncStream.makeStream(
+            of: (Int, FrameResult, CIImage).self,
+            bufferingPolicy: .unbounded
+        )
         
-        // reset states
+        self.resultContinuation = continuation
+
+        // Serial consumer: state machine processing
+        processingTask = Task { [weak self] in
+            guard let self else { return }
+
+            var buffer = [Int: (FrameResult, CIImage)]()
+            var nextIndex: Int = 0
+
+            for await (finishedIndex, result, image) in stream {
+                buffer[finishedIndex] = (result, image)
+                while let (nextResult, frame) = buffer.removeValue(forKey: nextIndex) {
+
+                    var nextResult = nextResult
+                    let timestamp = nextResult.presentationTime
+                    let hands = nextResult.hands ?? []
+                    let currentBox = nextResult.boxDetection!
+                    async let currentState = self.currentState
+                    async let results = self.results
+                    let blockSize = await self.blockSize
+                    let pastBlockCenters = await self.pastBlockCenters
+
+                    var blockROIs: [NormalizedRect] = []
+                    switch await currentState {
+                    case .crossed:
+                        if let handROI = defineBloackROI(by: hands, await results, timestamp, currentBox, handedness) {
+                            blockROIs.append(handROI)
+
+                            blockROIs.append(contentsOf: pastBlockCenters.reduce(into: []) { result, blockCenter in
+                                let candidateROI = scaleROIcenter(blockCenter, blockSize: blockSize)
+
+                                if candidateROI.percentCovered(by: handROI) < FrameProcessingThresholds.roiOverlapThreshold {
+                                    result.append(candidateROI)
+                                }
+                            })
+                        }
+
+                    case .detecting:
+                        if let roi = defineBloackROI(by: hands, await results, timestamp, currentBox, handedness) {
+                            blockROIs.append(roi)
+                        }
+
+                    case .crossedBack:
+                        blockROIs.append(contentsOf: pastBlockCenters.map { center in
+                            return scaleROIcenter(center, blockSize: blockSize)
+                        })
+
+                    default:
+                        break
+                    }
+
+                    var blockDetections: [BlockDetection] = []
+                    for await blockDetection in blockDetector.perforAll(on: frame, in: blockROIs) {
+                        var allBlocks = blockDetection
+                        if var objects = allBlocks.objects {
+                            objects.removeAll { block in
+                                isInvalidBlock(block, allBlocks.ROI, basedOn: hands.first, handedness) ||
+                                block.confidence < FrameProcessingThresholds.blockConfidenceThreshold
+                            }
+                            allBlocks.objects = objects
+                        }
+                        blockDetections.append(allBlocks)
+                    }
+                    let nextState = await currentState.transition(by: hands, currentBox, blockDetections)
+
+                    await self.updateState(nextState)
+                    nextResult.blockTransfered = await self.blockCounts
+
+                    nextResult.state = nextState
+                    nextResult.blockDetections = blockDetections
+                    await appendResult(nextResult)
+
+                    nextIndex += 1
+                }
+            }
+        }
+    }
+
+    func stopCountingBlocks() async -> [FrameResult] {
+        // Finish the internal counting stream
+        resultContinuation?.finish()
+        resultContinuation = nil
+
+        // Wait for pipeline to drain
+        await processingTask?.value
+
+        processingTask = nil
+
+        let resultsToReturn = results
+
+        // Reset state — mainTask automatically resumes pre-counting mode
         countingBlocks = false
         results.removeAll()
         currentBox = nil
         currentState = .free
         blockCounts = 0
-        
-        return resultsOutput
+
+        return resultsToReturn
     }
-    
-    /// Processes a single frame from the camera or video
-    /// - Parameters:
-    ///     - pixelBuffer: The frame to process
-    ///     - timestamp: The presentation time of the frame
-    func processFrame(_ pixelBuffer: CVImageBuffer, time timestamp: CMTime) async -> FrameResult {
-        
-        var result: FrameResult
-        
-        defer {
-            if countingBlocks {
-                results.insertSorted(result)
-            }
-        }
-        
-        let ciImage = CIImage(cvPixelBuffer: pixelBuffer)
-        async let faces = try? facesRequest.perform(on: ciImage)
-        
-        // MARK: - Before the algorithm starts, locate the box
-        if !countingBlocks {
-            async let box = try? boxRequest.perform(on: ciImage)
-            
-            var boxDetected: BoxDetection?
-            
-            if let boxRequestResult = await box as? [CoreMLFeatureValueObservation],
-                let outputArray = boxRequestResult.first?.featureValue.shapedArrayValue(of: Float.self) {
-                    boxDetected = BoxDetector.processKeypointOutput(outputArray)
-                }
-        
-            
-            result = FrameResult(
-                presentationTime: timestamp,
-                state: currentState,
-                blockTransfered: blockCounts,
-                faces: await faces,
-                boxDetection: boxDetected
-            )
-            
-            return result
-        }
-        
-        // MARK: - The block counting algorithm
-        guard let currentBox = currentBox else {
-            fatalError("Bad Box!")
-        }
-        
-        async let allhands = try? handsRequest.perform(on: ciImage)
-        
-        // MARK: - Filter out the wrong hand
-        guard let allhands = await allhands else {
-            result = FrameResult(
-                presentationTime: timestamp,
-                state: currentState,
-                blockTransfered: blockCounts,
-                faces: await faces,
-                boxDetection: currentBox
-            )
-            
-            return result
-        }
-        
-        let hands = allhands.filter { hand in
-            return hand.chirality == nil || hand.chirality == handedness
-        }
-        
-        // MARK: - detect the block
-        
-        var blockROIs: [NormalizedRect] = []
-        
-        switch currentState {
-            
-        case .crossed: // look for blocks around the hand plus roi follow block
-            
-            if let handROI = defineBloackROI(by: hands, results, timestamp, currentBox, handedness) {
-                blockROIs.append(handROI)
-                
-                blockROIs.append(contentsOf: pastBlockCenters.reduce(into: []) { result, blockCenter in
-                    let candidateROI = scaleROIcenter(blockCenter, blockSize: blockSize)
-                        
-                    // don't append the ROI where it's covered by hand already.
-                    if candidateROI.percentCovered(by: handROI) < 0.8 {
-                        result.append(candidateROI)
-                    }
-                })
-            }
-            
-        case .detecting: // look for block around the hand
-            
-            if let roi = defineBloackROI(by: hands, results, timestamp, currentBox, handedness) {
-                blockROIs.append(roi)
-            }
-            
-        case .crossedBack: // roi follow block
-            
-            blockROIs.append(contentsOf: pastBlockCenters.map { center in
-                return scaleROIcenter(center, blockSize: blockSize)
-            })
-            
-        default:
-            break
-        }
-        
-        // MARK: - Detect n Process the blocks
-        
-        var blockDetections: [BlockDetection] = []
-        for await blockDetection in blockDetector.perforAll(on: ciImage, in: blockROIs) {
-            var allBlocks = blockDetection
-            if var objects = allBlocks.objects {
-                objects.removeAll { block in
-                    isInvalidBlock(block, allBlocks.ROI, basedOn: hands.first, handedness) ||
-                    block.confidence < 0.5
-                }
-                allBlocks.objects = objects
-            }
-            blockDetections.append(allBlocks)
-        }
-        
-        print("Current state:\(currentState)")
-        
-        let nextState = currentState.transition(by: hands, currentBox, blockDetections)
-        print("Next state: \(nextState)")
-        
-        if currentState == .detecting && nextState == .crossed {
-            Task { @MainActor in
-                self.onCrossed()
-            }
-        } else if (currentState == .crossed && nextState == .released) ||
-        (currentState == .crossedBack && nextState == .released) {
+
+    // MARK: - Private functions
+
+    private func updateState(_ newState: BlockCountingState) {
+        if newState == .crossed && self.currentState != .crossed {
+            onCrossed()
+        } else if (currentState == .crossed && newState == .released) ||
+                    (currentState == .crossedBack && newState == .released) {
             blockCounts += 1
         }
-        
-        print("Success count: \(blockCounts)")
-        
-        currentState = nextState
-        
-        result = FrameResult(
-            presentationTime: timestamp,
-            state: currentState,
-            blockTransfered: blockCounts,
-            faces: await faces,
-            boxDetection: currentBox,
-            hands: allhands,
-            blockDetections: blockDetections
-        )
-        
-        return result
+        currentState = newState
+    }
+
+    private func updateBox(from box: BoxDetection, at time: CMTime) {
+        if boxLastUpdated < time {
+            currentBox = box
+        }
+    }
+
+    private func appendResult(_ result: FrameResult) {
+        results.append(result)
     }
 }
-
 
