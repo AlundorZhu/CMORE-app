@@ -7,15 +7,9 @@
 import SwiftUI
 import AVFoundation
 
-// MARK: - Video Stream Interface
-/// A full-screen camera experience similar to the default Camera app.
-/// - Shows a 16:9 live preview that expands to the largest size that fits the screen
-///   without cropping (letterboxes on the short dimension).
-/// - Overlays recording controls and status on top of the preview.
-/// - Keeps face bounding boxes aligned with the preview area.
-struct CMOREView: View {
+struct StreamView: View {
     // View model driving camera and recording state
-    @ObservedObject var viewModel: CMOREViewModel
+    @ObservedObject var viewModel: StreamViewModel
 
     // The target stream aspect ratio (e.g., 1920x1080 = 16:9)
     private var streamAspect: CGFloat {
@@ -56,7 +50,7 @@ struct CMOREView: View {
                 }
             }
             
-            CmoreUI(viewModel)
+            StreamUI(viewModel)
         }
         .ignoresSafeArea()
     }
@@ -64,6 +58,6 @@ struct CMOREView: View {
 
 // MARK: - Preview
 #Preview {
-    CMOREView(viewModel: CMOREViewModel())
+    StreamView(viewModel: StreamViewModel())
 }
 
