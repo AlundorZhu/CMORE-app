@@ -29,9 +29,22 @@
 		8A19DD792E610B010038DD1E /* CMOREUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = CMOREUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		8A0543BC2E55678E00BE2B01 /* Exceptions for "CMORE" folder in "CMORE" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 8A05438F2E55657C00BE2B01 /* CMORE */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		8A0543922E55657C00BE2B01 /* CMORE */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				8A0543BC2E55678E00BE2B01 /* Exceptions for "CMORE" folder in "CMORE" target */,
+			);
 			path = CMORE;
 			sourceTree = "<group>";
 		};
@@ -406,7 +419,6 @@
 				INFOPLIST_KEY_LSSupportsOpeningDocumentsInPlace = YES;
 				INFOPLIST_KEY_NSCameraUsageDescription = "CMORE needs access to the camera to record video.";
 				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "CMORE needs access to save recorded videos to your photo library.";
-				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "CMORE needs to import videos from your photo library for analysis";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
@@ -460,7 +472,6 @@
 				INFOPLIST_KEY_LSSupportsOpeningDocumentsInPlace = YES;
 				INFOPLIST_KEY_NSCameraUsageDescription = "CMORE needs access to the camera to record video.";
 				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "CMORE needs access to save recorded videos to your photo library.";
-				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "CMORE needs to import videos from your photo library for analysis";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
