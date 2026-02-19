@@ -4,9 +4,21 @@
 //
 
 import SwiftUI
+import PhotosUI
+import Vision
 
 struct LibraryView: View {
     @StateObject private var viewModel = LibraryViewModel()
+
+    @State private var showAddOptions = false
+    @State private var showPhotoPicker = false
+    @State private var navigateToCamera = false
+    @State private var selectedVideoURL: URL?
+    @State private var navigateToVideo = false
+    @State private var showHandednessChoice = false
+    @State private var selectedHandedness: HumanHandPoseObservation.Chirality = .right
+    @State private var showValidationError = false
+    @State private var validationErrorMessage = ""
 
     var body: some View {
         NavigationStack {
@@ -26,13 +38,71 @@ struct LibraryView: View {
             .navigationTitle("Library")
             .onAppear { viewModel.loadSessions() }
             .overlay(alignment: .bottom) {
-                NavigationLink {
-                    CameraContainerView()
+                Button {
+                    showAddOptions = true
                 } label: {
                     Image(systemName: "plus.circle.fill")
                         .font(.system(size: 56))
                         .foregroundStyle(.white, .black)
                         .shadow(radius: 4)
+                }
+                .padding(.bottom, 32)
+            }
+            .confirmationDialog("Add Session", isPresented: $showAddOptions) {
+                Button("Record New") {
+                    navigateToCamera = true
+                }
+                Button("Import from Photos") {
+                    showPhotoPicker = true
+                }
+                Button("Cancel", role: .cancel) {}
+            }
+            .navigationDestination(isPresented: $navigateToCamera) {
+                CameraContainerView()
+            }
+            .navigationDestination(isPresented: $navigateToVideo) {
+                if let url = selectedVideoURL {
+                    VideoProcessingView(videoURL: url, handedness: selectedHandedness)
+                }
+            }
+            .confirmationDialog("Which hand?", isPresented: $showHandednessChoice) {
+                Button("Right Hand") {
+                    selectedHandedness = .right
+                    navigateToVideo = true
+                }
+                Button("Left Hand") {
+                    selectedHandedness = .left
+                    navigateToVideo = true
+                }
+                Button("Cancel", role: .cancel) {}
+            }
+            .sheet(isPresented: $showPhotoPicker) {
+                VideoPicker(completion: { url in
+                    handlePickedVideo(url)
+                })
+            }
+            .alert("Invalid Video", isPresented: $showValidationError) {
+                Button("OK") {}
+            } message: {
+                Text(validationErrorMessage)
+            }
+        }
+    }
+
+    private func handlePickedVideo(_ url: URL?) {
+        guard let url else { return }
+
+        Task {
+            let extractor = VideoFrameExtractor(url: url)
+            if let error = await extractor.validate() {
+                await MainActor.run {
+                    validationErrorMessage = error
+                    showValidationError = true
+                }
+            } else {
+                await MainActor.run {
+                    selectedVideoURL = url
+                    showHandednessChoice = true
                 }
             }
         }
@@ -71,8 +141,7 @@ private struct SessionRow: View {
     }
 }
 
-/// Wrapper that owns the CMOREViewModel so the camera only initializes
-/// when the user navigates to this screen.
+// MARK: - Camera Container
 struct CameraContainerView: View {
     @StateObject private var viewModel = CMOREViewModel()
     @Environment(\.dismiss) private var dismiss
@@ -94,7 +163,6 @@ struct CameraContainerView: View {
                 }
             }
             .onChange(of: viewModel.showSaveConfirmation) { wasShowing, isShowing in
-                // When the alert dismisses (user tapped Save or Discard), go back to library
                 if wasShowing && !isShowing {
                     dismiss()
                 }
