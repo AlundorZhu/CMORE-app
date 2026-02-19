@@ -30,8 +30,11 @@ struct LibraryView: View {
                         description: Text("Tap + to record a new session")
                     )
                 } else {
-                    List(viewModel.sessions) { session in
-                        SessionRow(session: session)
+                    List {
+                        ForEach(viewModel.sessions) { session in
+                            SessionRow(session: session)
+                        }
+                        .onDelete(perform: viewModel.deleteSessions)
                     }
                 }
             }
@@ -48,7 +51,7 @@ struct LibraryView: View {
                 }
                 .padding(.bottom, 32)
             }
-            .confirmationDialog("Add Session", isPresented: $showAddOptions) {
+            .alert("Add Session", isPresented: $showAddOptions) {
                 Button("Record New") {
                     navigateToCamera = true
                 }
@@ -65,7 +68,7 @@ struct LibraryView: View {
                     VideoProcessingView(videoURL: url, handedness: selectedHandedness)
                 }
             }
-            .confirmationDialog("Which hand?", isPresented: $showHandednessChoice) {
+            .alert("Which hand?", isPresented: $showHandednessChoice) {
                 Button("Right Hand") {
                     selectedHandedness = .right
                     navigateToVideo = true

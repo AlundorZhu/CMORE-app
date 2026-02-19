@@ -10,5 +10,16 @@ class LibraryViewModel: ObservableObject {
 
     func loadSessions() {
         sessions = SessionStore.shared.loadAll()
+        #if DEBUG
+        print("Sessions loaded into view model: \(sessions)")
+        #endif
+    }
+
+    func deleteSessions(at offsets: IndexSet) {
+        let sessionsToDelete = offsets.compactMap { index in
+            sessions.indices.contains(index) ? sessions[index] : nil
+        }
+        sessionsToDelete.forEach { SessionStore.shared.delete($0) }
+        sessions.remove(atOffsets: offsets)
     }
 }

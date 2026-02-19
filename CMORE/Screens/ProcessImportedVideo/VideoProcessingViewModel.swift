@@ -189,15 +189,8 @@ class VideoProcessingViewModel: ObservableObject {
             print("Error copying video: \(error)")
         }
 
-        // Save results JSON
-        guard let startTime = results.first?.presentationTime else { return }
-
         do {
-            let data = try JSONEncoder().encode(results.map {
-                var tmp = $0
-                tmp.presentationTime = tmp.presentationTime - startTime
-                return tmp
-            })
+            let data = try JSONEncoder().encode(results)
             try data.write(to: resultsURL)
         } catch {
             print("Error saving results: \(error)")
