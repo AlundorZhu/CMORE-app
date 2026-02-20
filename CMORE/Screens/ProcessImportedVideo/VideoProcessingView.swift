@@ -45,8 +45,8 @@ struct VideoProcessingView: View {
                 HandednessIndicator(handedness: viewModel.handedness)
                     .padding(.top, 5)
                 // Block count
-                if let overlay = viewModel.overlay {
-                    Text("Blocks: \(overlay.blockDetections.count)")
+                if let blocks = viewModel.overlay?.blockTransfered {
+                    Text("Blocks: \(blocks)")
                         .font(.headline)
                         .padding(8)
                         .background(
