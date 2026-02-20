@@ -13,6 +13,7 @@ import AVFoundation
 // Bundle anchor for locating test resources
 private class TestBundleAnchor {}
 
+@Suite("End to End Block Count")
 struct BlockCountTests {
     enum TestError: Error {
         case resourceNotFound(String)
@@ -59,7 +60,7 @@ struct BlockCountTests {
 
         // Read the block count from the last saved session
         let sessions = SessionStore.shared.loadAll()
-        let lastSession = try #require(sessions.last, "Should have saved a session")
+        let lastSession = try #require(sessions.first, "Should have saved a session")
         let blockCount = lastSession.blockCount
 
         print("Block count result: \(blockCount) (expected: \(expectedCount))")

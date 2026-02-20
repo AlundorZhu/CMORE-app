@@ -4,3 +4,7 @@ CMORE.xcodeproj/project.xcworkspace/xcuserdata
 
 # Test resources
 CMORETests/TestResources/*
+
+# random stuff
+image.png
+instruction.md
