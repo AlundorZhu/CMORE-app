@@ -53,7 +53,7 @@ class StreamViewModel: ObservableObject {
 
         self.frameProcessor = FrameProcessor(
             onCross: { AudioServicesPlaySystemSound(1054) },
-            perFrame: { [weak self] result in
+            partialResult: { [weak self] result in
                 guard let self else { return }
 
                 if self.isRecording && self.recordingStartTime == nil {
