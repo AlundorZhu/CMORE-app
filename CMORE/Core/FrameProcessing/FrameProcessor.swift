@@ -284,10 +284,12 @@ actor FrameProcessor {
                                 boxDetected = BoxDetector.processKeypointOutput(outputArray)
                             }
 
-                            self.partialResult(FrameResult(
+                            let result = FrameResult(
                                 presentationTime: timestamp,
                                 boxDetection: boxDetected
-                            ))
+                            )
+                            self.partialResult(result)
+                            self.fullResult(result)
                         }
                     }
                     activeTasks += 1
@@ -382,6 +384,7 @@ actor FrameProcessor {
 
                     nextResult.state = nextState
                     nextResult.blockDetections = blockDetections
+                    self.fullResult(nextResult)
                     await appendResult(nextResult)
 
                     nextIndex += 1
