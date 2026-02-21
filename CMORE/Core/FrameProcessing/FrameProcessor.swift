@@ -365,6 +365,7 @@ actor FrameProcessor {
                         break
                     }
 
+                    // This is problematic
                     var blockDetections: [BlockDetection] = []
                     for await blockDetection in blockDetector.perforAll(on: frame, in: blockROIs) {
                         var allBlocks = blockDetection
@@ -404,6 +405,9 @@ actor FrameProcessor {
         processingTask = nil
 
         let resultsToReturn = results
+        #if DEBUG
+        print("Frame processor: returned results: \(resultsToReturn)")
+        #endif
 
         // Reset state — mainTask automatically resumes pre-counting mode
         countingBlocks = false

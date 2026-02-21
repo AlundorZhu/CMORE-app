@@ -78,8 +78,10 @@ class VideoProcessingViewModel: ObservableObject {
         // Start FrameProcessor consuming the stream (runs until continuation.finish())
         await frameProcessor.startProcessing(stream: stream)
 
-        // Yield the first frame to kick things off
-        yieldNextFrame()
+        // Yield the first 6 frames to kick things off
+        for _ in 0..<6 {
+            yieldNextFrame()
+        }
     }
 
     // MARK: - Private Methods
@@ -196,7 +198,7 @@ class VideoProcessingViewModel: ObservableObject {
             print("Error saving results: \(error)")
         }
 
-        let blockCount = results.compactMap(\.blockTransfered).max() ?? 0
+        let blockCount = results.last?.blockTransfered ?? 0
 
         let session = Session(
             id: UUID(),

@@ -24,12 +24,16 @@ class SessionStore {
 
     func loadAll() -> [Session] {
         guard fileManager.fileExists(atPath: indexURL.path) else { return [] }
+        
+        #if DEBUG
+        print("Session Store: Loading from \(indexURL.path)")
+        #endif
 
         do {
             let data = try Data(contentsOf: indexURL)
             return try JSONDecoder().decode([Session].self, from: data)
         } catch {
-            print("Failed to load sessions: \(error)")
+            print("Session Store: Failed to load sessions: \(error)")
             return []
         }
     }
