@@ -64,7 +64,7 @@ class SessionStore {
             let data = try JSONEncoder().encode(sessions)
             try data.write(to: indexURL)
         } catch {
-            print("Failed to save sessions index: \(error)")
+            print("Session Store: Failed to save sessions index: \(error)")
         }
     }
 }

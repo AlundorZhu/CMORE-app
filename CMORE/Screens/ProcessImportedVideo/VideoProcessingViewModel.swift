@@ -64,7 +64,9 @@ class VideoProcessingViewModel: ObservableObject {
         do {
             try await extractor.prepare()
         } catch {
-            print("Failed to prepare video: \(error)")
+            #if DEBUG
+            print("Video Processing View Model: Failed to prepare video: \(error)")
+            #endif
             await MainActor.run { isProcessing = false; isDone = true }
             return
         }
@@ -112,7 +114,9 @@ class VideoProcessingViewModel: ObservableObject {
         do {
             try await extractor.rewind()
         } catch {
-            print("Failed to rewind video: \(error)")
+            #if DEBUG
+            print("Video Processing View Model: Failed to rewind video: \(error)")
+            #endif
             continuation?.finish()
             return
         }
@@ -188,14 +192,18 @@ class VideoProcessingViewModel: ObservableObject {
         do {
             try FileManager.default.copyItem(at: videoURL, to: videoDestURL)
         } catch {
-            print("Error copying video: \(error)")
+            #if DEBUG
+            print("Video Processing View Model: Error copying video: \(error)")
+            #endif
         }
 
         do {
             let data = try JSONEncoder().encode(results)
             try data.write(to: resultsURL)
         } catch {
-            print("Error saving results: \(error)")
+            #if DEBUG
+            print("Video Processing View Model: Error saving results: \(error)")
+            #endif
         }
 
         let blockCount = results.last?.blockTransfered ?? 0

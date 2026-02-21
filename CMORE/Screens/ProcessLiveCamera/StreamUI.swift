@@ -62,7 +62,6 @@ struct StreamUI: View {
             DragGesture(minimumDistance: 50)
                 .onEnded { gesture in
                     
-//                    print("I see you draged: \(gesture)")
                     let horizontalMovement = gesture.translation.width
                     let verticalMovement = gesture.translation.height
                     

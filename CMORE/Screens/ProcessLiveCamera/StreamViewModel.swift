@@ -69,10 +69,10 @@ class StreamViewModel: ObservableObject {
         cameraManager.onRecordingFinished = { [weak self] url, error in
             guard let self else { return }
             if let error = error {
-                print("Recording error: \(error.localizedDescription)")
+                print("Stream View Model: Recording error: \(error.localizedDescription)")
                 self.currentVideoURL = nil
             } else {
-                print("Recording completed! Save or discard?")
+                print("Stream View Model: Recording completed! Save or discard?")
                 self.showSaveConfirmation = true
             }
         }
@@ -95,7 +95,7 @@ class StreamViewModel: ObservableObject {
 
     func toggleHandedness() {
         guard !isRecording else {
-            print("Handedness change not allowed after recording started!")
+            print("Stream View Model: Handedness change not allowed after recording started!")
             return
         }
 
@@ -112,7 +112,7 @@ class StreamViewModel: ObservableObject {
               let fileNameSuffix = fileNameSuffix,
               let result = result,
               let recordingStartTime = recordingStartTime else {
-            print("Error: missing data for session save")
+            print("Stream View Model: missing data for session save")
             return
         }
 
@@ -129,7 +129,7 @@ class StreamViewModel: ObservableObject {
             })
             try data.write(to: resultsURL)
         } catch {
-            print("Error saving results: \(error)")
+            print("Stream View Model: Error saving results: \(error)")
         }
 
         // Compute block count from results

@@ -65,7 +65,9 @@ struct VideoPicker: UIViewControllerRepresentable {
 
             provider.loadFileRepresentation(forTypeIdentifier: typeId) { url, error in
                 if let error {
+                    #if DEBUG
                     print("VideoPicker load error: \(error.localizedDescription)")
+                    #endif
                     DispatchQueue.main.async { self.completion(nil) }
                     return
                 }
@@ -113,7 +115,9 @@ struct VideoPicker: UIViewControllerRepresentable {
                     self.completion(destURL)
                 }
             } catch {
+                #if DEBUG
                 print("VideoPicker copy error: \(error.localizedDescription)")
+                #endif
                 DispatchQueue.main.async {
                     self.completion(nil)
                 }

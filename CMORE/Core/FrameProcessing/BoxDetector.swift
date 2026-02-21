@@ -80,7 +80,6 @@ struct BoxDetector {
         // Return keypoints from the best detection
         if var bestDetection = filteredDetections.first {
             
-            //            print("Object confidence: \(bestDetection.objectConf)")
             
             // Normalize the results before returning it
             for idx in bestDetection.keypoints.indices {
@@ -89,7 +88,6 @@ struct BoxDetector {
             return bestDetection
         }
         
-        //        print("No box detected!")
         return nil
     }
     
