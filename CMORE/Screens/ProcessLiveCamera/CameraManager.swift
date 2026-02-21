@@ -42,7 +42,7 @@ class CameraManager: NSObject, AVCaptureFileOutputRecordingDelegate {
 
     func setup() {
         guard let camera = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back) else {
-            print("Failed to get camera with LiDAR device")
+            print("Failed to get camera device")
             return
         }
 
@@ -90,7 +90,9 @@ class CameraManager: NSObject, AVCaptureFileOutputRecordingDelegate {
             }
 
         } catch {
-            print("Error setting up camera: \(error)")
+            #if DEBUG
+            print("Camera manager: Error setting up camera: \(error)")
+            #endif
         }
     }
 
@@ -100,7 +102,7 @@ class CameraManager: NSObject, AVCaptureFileOutputRecordingDelegate {
         #endif
         guard captureSession?.isRunning != true else { return }
         guard let captureSession = captureSession else {
-            print("Capture session not available")
+            print("Camera manager: capture session not available")
             return
         }
 
@@ -128,7 +130,7 @@ class CameraManager: NSObject, AVCaptureFileOutputRecordingDelegate {
 
     func startRecording(to url: URL) {
         guard let movieOutput = movieOutput else {
-            print("Movie output not available")
+            print("Camera manager: Movie output not available")
             return
         }
 
@@ -137,7 +139,7 @@ class CameraManager: NSObject, AVCaptureFileOutputRecordingDelegate {
         }
 
         movieOutput.startRecording(to: url, recordingDelegate: self)
-        print("Recording started")
+        print("Camera manager: Recording started")
     }
 
     func stopRecording() {
@@ -149,7 +151,7 @@ class CameraManager: NSObject, AVCaptureFileOutputRecordingDelegate {
 
     func saveVideoToPhotos(_ videoURL: URL) {
         guard FileManager.default.fileExists(atPath: videoURL.path) else {
-            print("Error: Video file not found")
+            print("Camera manager: Video file not found, fail to save to photos")
             return
         }
 
@@ -170,7 +172,7 @@ class CameraManager: NSObject, AVCaptureFileOutputRecordingDelegate {
     
     /// Called when recording starts successfully
     func fileOutput(_ output: AVCaptureFileOutput, didStartRecordingTo fileURL: URL, from connections: [AVCaptureConnection]) {
-        print("Started recording to: \(fileURL)")
+        print("Camera manager: Started recording to: \(fileURL)")
     }
 
     /// Called when recording finishes
@@ -205,7 +207,7 @@ class CameraManager: NSObject, AVCaptureFileOutputRecordingDelegate {
             hasCorrectResolution(format) &&
             supportsFrameRate(format)
         }) else {
-            fatalError("No supported format")
+            fatalError("Camera manager: No supported format")
         }
 
         return targetFormat
@@ -218,7 +220,7 @@ extension CameraManager: AVCaptureVideoDataOutputSampleBufferDelegate {
         let currentTime = sampleBuffer.presentationTimeStamp
 
         guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else {
-            print("Fail to get pixel buffer!")
+            print("Camera manager: Fail to get pixel buffer!")
             return
         }
 
@@ -226,7 +228,7 @@ extension CameraManager: AVCaptureVideoDataOutputSampleBufferDelegate {
         let yieldResult = frameContinuation?.yield((ciImage, currentTime))
         
         print(String(repeating: "-", count: 50))
-        print("Frame number: \(frameNum)")
+        print("Camera manager: Frame number: \(frameNum)")
         frameNum += 1
         
         #if DEBUG
@@ -255,7 +257,7 @@ extension CameraManager: AVCaptureVideoDataOutputSampleBufferDelegate {
 
     func captureOutput(_ output: AVCaptureOutput, didDrop sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
         let currentTime = sampleBuffer.presentationTimeStamp
-        print("AVFoundation dropped \(frameNum)th frame at \(currentTime.seconds)s")
+        print("Camera manager: AVFoundation dropped \(frameNum)th frame at \(currentTime.seconds)s")
         frameNum += 1
     }
 }

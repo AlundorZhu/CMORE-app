@@ -44,6 +44,17 @@ struct VideoProcessingView: View {
             VStack {
                 HandednessIndicator(handedness: viewModel.handedness)
                     .padding(.top, 5)
+                // Block count
+                if let blocks = viewModel.overlay?.blockTransfered {
+                    Text("Blocks: \(blocks)")
+                        .font(.headline)
+                        .padding(8)
+                        .background(
+                            RoundedRectangle(cornerRadius: 12)
+                                .fill(.black.opacity(0.6))
+                        )
+                        .foregroundColor(.white)
+                }
                 Spacer()
 
                 if viewModel.isProcessing {
@@ -83,3 +94,4 @@ struct VideoProcessingView: View {
         }
     }
 }
+

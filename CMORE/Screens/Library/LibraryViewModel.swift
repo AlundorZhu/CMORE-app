@@ -11,7 +11,7 @@ class LibraryViewModel: ObservableObject {
     func loadSessions() {
         sessions = SessionStore.shared.loadAll()
         #if DEBUG
-        print("Sessions loaded into view model: \(sessions)")
+        print("Library View Model: sessions loaded: \(sessions)")
         #endif
     }
 

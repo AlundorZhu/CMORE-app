@@ -25,7 +25,7 @@ class OrientationManager {
         }
 
         scene.requestGeometryUpdate(.iOS(interfaceOrientations: mask)) { error in
-            print("Orientation update failed: \(error)")
+            print("Orientation Manager: Orientation update failed: \(error)")
         }
 
         scene.windows.first?.rootViewController?.setNeedsUpdateOfSupportedInterfaceOrientations()

@@ -52,11 +52,17 @@ struct LibraryView: View {
                 .padding(.bottom, 32)
             }
             .alert("Add Session", isPresented: $showAddOptions) {
-                Button("Record New") {
-                    navigateToCamera = true
-                }
-                Button("Import from Photos") {
-                    showPhotoPicker = true
+                if !ProcessInfo.processInfo.isiOSAppOnMac {
+                    Button("Record New") {
+                        navigateToCamera = true
+                    }
+                    Button("Import from Photos") {
+                        showPhotoPicker = true
+                    }
+                } else {
+                    Button("Import from Files", role: .confirm) {
+                        showPhotoPicker = true
+                    }
                 }
                 Button("Cancel", role: .cancel) {}
             }

@@ -168,8 +168,9 @@ actor FrameProcessor {
 
     // MARK: - Callbacks
 
-    nonisolated let onCrossed: (() -> Void)!
-    nonisolated let perFrame: ((FrameResult) -> Void)!
+    nonisolated let onCrossed: () -> Void
+    nonisolated let partialResult: (FrameResult) -> Void
+    nonisolated let fullResult: (FrameResult) -> Void
 
     // MARK: - Stateful properties
 
@@ -235,9 +236,14 @@ actor FrameProcessor {
 
     // MARK: - Public Methods
 
-    init(onCross: @escaping () -> Void, perFrame: @escaping (FrameResult) -> Void) {
+    init(
+        onCross: @escaping () -> Void = {},
+        partialResult: @escaping (FrameResult) -> Void = {_ in },
+        fullResult: @escaping (FrameResult) -> Void = { _ in }
+    ) {
         self.onCrossed = onCross
-        self.perFrame = perFrame
+        self.partialResult = partialResult
+        self.fullResult = fullResult
     }
 
     /// Start consuming the camera frame stream. A single for-await loop runs for the
@@ -266,7 +272,7 @@ actor FrameProcessor {
                             let currentHandedness = await self.handedness
                             
                             partialResults.hands = await detectnFilterHands(in: image, currentHandedness)
-                            self.perFrame(partialResults)
+                            self.partialResult(partialResults)
                             await self.resultContinuation?.yield((index, partialResults, image))
                         }
                     } else {
@@ -278,10 +284,12 @@ actor FrameProcessor {
                                 boxDetected = BoxDetector.processKeypointOutput(outputArray)
                             }
 
-                            self.perFrame(FrameResult(
+                            let result = FrameResult(
                                 presentationTime: timestamp,
                                 boxDetection: boxDetected
-                            ))
+                            )
+                            self.partialResult(result)
+                            self.fullResult(result)
                         }
                     }
                     activeTasks += 1
@@ -357,6 +365,7 @@ actor FrameProcessor {
                         break
                     }
 
+                    // This is problematic
                     var blockDetections: [BlockDetection] = []
                     for await blockDetection in blockDetector.perforAll(on: frame, in: blockROIs) {
                         var allBlocks = blockDetection
@@ -376,6 +385,7 @@ actor FrameProcessor {
 
                     nextResult.state = nextState
                     nextResult.blockDetections = blockDetections
+                    self.fullResult(nextResult)
                     await appendResult(nextResult)
 
                     nextIndex += 1
@@ -395,6 +405,9 @@ actor FrameProcessor {
         processingTask = nil
 
         let resultsToReturn = results
+        #if DEBUG
+        print("Frame processor: returned results: \(resultsToReturn)")
+        #endif
 
         // Reset state — mainTask automatically resumes pre-counting mode
         countingBlocks = false
