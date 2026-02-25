@@ -36,25 +36,6 @@ struct StreamUI: View {
                 .padding(.trailing, 5)
                 
             }
-            
-//            if let overlay: FrameResult = viewModel.overlay {
-//                VStack{
-//                    HStack {
-//                        Text("\(overlay.blockTransfered ?? 0)")
-//                            .font(.headline)
-//                            .foregroundStyle(.white)
-//                            .padding(8)
-//                            .background(
-//                                RoundedRectangle(cornerRadius: 8)
-//                                    .fill(.black.opacity(0.5))
-//                            )
-//                            .padding(.top, 5)
-//                            .padding(.leading, 50)
-//                        Spacer()
-//                    }
-//                    Spacer()
-//                }
-//            }
         }
         .background(Color.clear)
         .contentShape(Rectangle())
