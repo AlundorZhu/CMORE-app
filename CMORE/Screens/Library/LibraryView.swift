@@ -10,7 +10,6 @@ import Vision
 
 struct LibraryView: View {
     @Query(sort: \Session.date, order: .reverse) private var sessions: [Session]
-    @Environment(\.modelContext) private var modelContext
 
     @State private var showAddOptions = false
     @State private var showPhotoPicker = false
@@ -40,7 +39,7 @@ struct LibraryView: View {
                         }
                         .onDelete { offsets in
                             for index in offsets {
-                                SessionStore.shared.delete(sessions[index], context: modelContext)
+                                SessionStore.shared.delete(sessions[index])
                             }
                         }
                     }
@@ -161,7 +160,6 @@ private struct SessionRow: View {
 struct CameraContainerView: View {
     @StateObject private var viewModel = StreamViewModel()
     @Environment(\.dismiss) private var dismiss
-    @Environment(\.modelContext) private var modelContext
 
     var body: some View {
         StreamView(viewModel: viewModel)
@@ -170,7 +168,6 @@ struct CameraContainerView: View {
             }
             .navigationBarBackButtonHidden(true)
             .onAppear {
-                viewModel.modelContext = modelContext
                 Task { @MainActor in
                     OrientationManager.shared.setOrientation(.landscapeRight)
                 }

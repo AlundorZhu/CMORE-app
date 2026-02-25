@@ -13,18 +13,20 @@ class SessionStore {
     // MARK: - Singleton
     static let shared = SessionStore()
 
+    var context: ModelContext!
+
     private var documentsDirectory: URL {
         FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
     }
 
     // MARK: - CRUD
 
-    func add(_ session: Session, context: ModelContext) {
+    func add(_ session: Session) {
         context.insert(session)
         try? context.save()
     }
 
-    func delete(_ session: Session, context: ModelContext) {
+    func delete(_ session: Session) {
         let videoURL = documentsDirectory.appendingPathComponent(session.videoFileName)
         let resultsURL = documentsDirectory.appendingPathComponent(session.resultsFileName)
         try? FileManager.default.removeItem(at: videoURL)
