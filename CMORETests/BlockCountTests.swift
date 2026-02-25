@@ -35,18 +35,14 @@ struct BlockCountTests {
 
     // MARK: - Tests
 
-    @Test("Video file meets minimum requirements")
-    func videoValidation() async throws {
-        let url = try testVideoURL()
-        let extractor = VideoFrameExtractor(url: url)
-        let validationError = await extractor.validate()
-        #expect(validationError == nil, "Video should be valid but got: \(validationError ?? "")")
-    }
-
     @Test("End-to-end block counting produces correct count",
           .timeLimit(.minutes(10)))
     func endToEndBlockCounting() async throws {
         let url = try testVideoURL()
+        let extractor = VideoFrameExtractor(url: url)
+        let validationError = await extractor.validate()
+        try #require(validationError == nil, "Video requires to be valid but got: \(validationError ?? "")")
+        
         let expectedCount = 14
 
         let vm = VideoProcessingViewModel()

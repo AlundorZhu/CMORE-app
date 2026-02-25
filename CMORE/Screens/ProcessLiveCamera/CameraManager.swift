@@ -226,12 +226,12 @@ extension CameraManager: AVCaptureVideoDataOutputSampleBufferDelegate {
 
         let ciImage = CIImage(cvPixelBuffer: pixelBuffer)
         let yieldResult = frameContinuation?.yield((ciImage, currentTime))
-        
-        print(String(repeating: "-", count: 50))
-        print("Camera manager: Frame number: \(frameNum)")
         frameNum += 1
         
         #if DEBUG
+        print(String(repeating: "-", count: 50))
+        print("Camera manager: Frame number: \(frameNum)")
+        
         switch yieldResult {
         case .dropped(_):
             print("Camera Stream: Dropped oldest frame in the queue, currently full with \(FrameProcessingThresholds.frameBufferSize + 1) frames")
@@ -257,7 +257,9 @@ extension CameraManager: AVCaptureVideoDataOutputSampleBufferDelegate {
 
     func captureOutput(_ output: AVCaptureOutput, didDrop sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
         let currentTime = sampleBuffer.presentationTimeStamp
+        #if DEBUG
         print("Camera manager: AVFoundation dropped \(frameNum)th frame at \(currentTime.seconds)s")
+        #endif
         frameNum += 1
     }
 }

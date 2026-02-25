@@ -111,6 +111,7 @@ class StreamViewModel: ObservableObject {
         guard let videoURL = currentVideoURL,
               let fileNameSuffix = fileNameSuffix,
               let result = result,
+              !result.isEmpty,
               let recordingStartTime = recordingStartTime else {
             print("Stream View Model: missing data for session save")
             return
