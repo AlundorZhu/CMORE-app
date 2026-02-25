@@ -85,7 +85,7 @@ class VideoProcessingViewModel: ObservableObject {
         await frameProcessor.startProcessing(stream: stream)
 
         // Yield the first 6 frames to kick things off
-        for _ in 0..<6 {
+        for _ in 0..<FrameProcessingThresholds.maxConcurrentTasks {
             yieldNextFrame()
         }
     }
