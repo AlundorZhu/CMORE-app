@@ -170,7 +170,7 @@ actor FrameProcessor {
 
     nonisolated let onCrossed: () -> Void
     nonisolated let partialResult: (FrameResult) -> Void
-    nonisolated let fullResult: (FrameResult) -> Void
+    nonisolated let fullResult: (FrameResult, CIImage) -> Void
 
     // MARK: - Stateful properties
 
@@ -239,7 +239,7 @@ actor FrameProcessor {
     init(
         onCross: @escaping () -> Void = {},
         partialResult: @escaping (FrameResult) -> Void = {_ in },
-        fullResult: @escaping (FrameResult) -> Void = { _ in }
+        fullResult: @escaping (FrameResult, CIImage) -> Void = { (_, _) in }
     ) {
         self.onCrossed = onCross
         self.partialResult = partialResult
@@ -289,7 +289,7 @@ actor FrameProcessor {
                                 boxDetection: boxDetected
                             )
                             self.partialResult(result)
-                            self.fullResult(result)
+                            self.fullResult(result, image)
                         }
                     }
                     activeTasks += 1
@@ -327,66 +327,7 @@ actor FrameProcessor {
                 buffer[finishedIndex] = (result, image)
                 while let (nextResult, frame) = buffer.removeValue(forKey: nextIndex) {
 
-                    var nextResult = nextResult
-                    let timestamp = nextResult.presentationTime
-                    let hands = nextResult.hands ?? []
-                    let currentBox = nextResult.boxDetection!
-                    async let currentState = self.currentState
-                    async let results = self.results
-                    let blockSize = await self.blockSize
-                    let pastBlockCenters = await self.pastBlockCenters
-
-                    var blockROIs: [NormalizedRect] = []
-                    switch await currentState {
-                    case .crossed:
-                        if let handROI = defineBloackROI(by: hands, await results, timestamp, currentBox, handedness) {
-                            blockROIs.append(handROI)
-
-                            blockROIs.append(contentsOf: pastBlockCenters.reduce(into: []) { result, blockCenter in
-                                let candidateROI = scaleROIcenter(blockCenter, blockSize: blockSize)
-
-                                if candidateROI.percentCovered(by: handROI) < FrameProcessingThresholds.roiOverlapThreshold {
-                                    result.append(candidateROI)
-                                }
-                            })
-                        }
-
-                    case .detecting:
-                        if let roi = defineBloackROI(by: hands, await results, timestamp, currentBox, handedness) {
-                            blockROIs.append(roi)
-                        }
-
-                    case .crossedBack:
-                        blockROIs.append(contentsOf: pastBlockCenters.map { center in
-                            return scaleROIcenter(center, blockSize: blockSize)
-                        })
-
-                    default:
-                        break
-                    }
-
-                    // This is problematic
-                    var blockDetections: [BlockDetection] = []
-                    for await blockDetection in blockDetector.perforAll(on: frame, in: blockROIs) {
-                        var allBlocks = blockDetection
-                        if var objects = allBlocks.objects {
-                            objects.removeAll { block in
-                                isInvalidBlock(block, allBlocks.ROI, basedOn: hands.first, handedness) ||
-                                block.confidence < FrameProcessingThresholds.blockConfidenceThreshold
-                            }
-                            allBlocks.objects = objects
-                        }
-                        blockDetections.append(allBlocks)
-                    }
-                    let nextState = await currentState.transition(by: hands, currentBox, blockDetections)
-
-                    await self.updateState(nextState)
-                    nextResult.blockTransfered = await self.blockCounts
-
-                    nextResult.state = nextState
-                    nextResult.blockDetections = blockDetections
-                    self.fullResult(nextResult)
-                    await appendResult(nextResult)
+                    await self.processInOrder(frame, partialResult: nextResult)
 
                     nextIndex += 1
                 }
@@ -421,6 +362,65 @@ actor FrameProcessor {
 
     // MARK: - Private functions
 
+    private func processInOrder(_ frame: CIImage, partialResult: FrameResult) async {
+        var nextResult = partialResult
+        let timestamp = nextResult.presentationTime
+        let hands = nextResult.hands ?? []
+        let currentBox = nextResult.boxDetection!
+
+        var blockROIs: [NormalizedRect] = []
+        switch currentState {
+        case .crossed:
+            if let handROI = defineBloackROI(by: hands, results, timestamp, currentBox, handedness) {
+                blockROIs.append(handROI)
+
+                blockROIs.append(contentsOf: pastBlockCenters.reduce(into: []) { result, blockCenter in
+                    let candidateROI = scaleROIcenter(blockCenter, blockSize: blockSize)
+
+                    if candidateROI.percentCovered(by: handROI) < FrameProcessingThresholds.roiOverlapThreshold {
+                        result.append(candidateROI)
+                    }
+                })
+            }
+
+        case .detecting:
+            if let roi = defineBloackROI(by: hands, results, timestamp, currentBox, handedness) {
+                blockROIs.append(roi)
+            }
+
+        case .crossedBack:
+            blockROIs.append(contentsOf: pastBlockCenters.map { center in
+                return scaleROIcenter(center, blockSize: blockSize)
+            })
+
+        default:
+            break
+        }
+
+        // This is problematic
+        var blockDetections: [BlockDetection] = []
+        for await blockDetection in blockDetector.perforAll(on: frame, in: blockROIs) {
+            var allBlocks = blockDetection
+            if var objects = allBlocks.objects {
+                objects.removeAll { block in
+                    isInvalidBlock(block, allBlocks.ROI, basedOn: hands.first, handedness) ||
+                    block.confidence < FrameProcessingThresholds.blockConfidenceThreshold
+                }
+                allBlocks.objects = objects
+            }
+            blockDetections.append(allBlocks)
+        }
+        let nextState = currentState.transition(by: hands, currentBox, blockDetections)
+
+        updateState(nextState)
+        nextResult.blockTransfered = blockCounts
+
+        nextResult.state = nextState
+        nextResult.blockDetections = blockDetections
+        fullResult(nextResult, frame)
+        appendResult(nextResult)
+    }
+    
     private func updateState(_ newState: BlockCountingState) {
         if newState == .crossed && self.currentState != .crossed {
             onCrossed()

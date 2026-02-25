@@ -21,6 +21,7 @@ class VideoProcessingViewModel: ObservableObject {
     private var frameProcessor: FrameProcessor!
     private var extractor: VideoFrameExtractor?
     private var videoURL: URL?
+    private var transitionTask: Task<Void, Never>?
 
     /// The single stream continuation that lives across both phases
     private var continuation: AsyncStream<(CIImage, CMTime)>.Continuation?
@@ -35,11 +36,14 @@ class VideoProcessingViewModel: ObservableObject {
     init() {
         self.frameProcessor = FrameProcessor(
             onCross: { /* no sound during video processing */ },
-            fullResult: { [weak self] result in
+            fullResult: { [weak self] result, image in
                 guard let self else { return }
 
+                
+                let uiImage = renderFrame(image)
                 Task { @MainActor in
                     self.overlay = result
+                    self.currentFrame = uiImage
                 }
 
                 // Each processed frame triggers the next one
@@ -95,7 +99,8 @@ class VideoProcessingViewModel: ObservableObject {
         case .scanning:
             if let box = result.boxDetection {
                 // Box found! Rewind and switch to counting
-                Task { [weak self] in
+                guard transitionTask == nil else { return }
+                transitionTask =  Task { [weak self] in
                     await self?.transitionToCounting(box: box)
                 }
             } else {
@@ -134,12 +139,6 @@ class VideoProcessingViewModel: ObservableObject {
         guard let extractor else { return }
 
         if let (image, timestamp) = extractor.nextFrame() {
-            // Render frame for display
-            let uiImage = renderFrame(image)
-            Task { @MainActor [weak self] in
-                self?.currentFrame = uiImage
-            }
-
             continuation?.yield((image, timestamp))
         } else {
             // End of video
@@ -149,6 +148,7 @@ class VideoProcessingViewModel: ObservableObject {
 
     /// Called when the video ends. Finishes the stream and saves results.
     private func finishProcessing() {
+        guard continuation != nil else { return }
         continuation?.finish()
         continuation = nil
 
@@ -156,8 +156,6 @@ class VideoProcessingViewModel: ObservableObject {
             guard let self else { return }
 
             if self.phase == .counting {
-                // Wait briefly for FrameProcessor to drain in-flight tasks
-                try? await Task.sleep(for: .milliseconds(500))
 
                 let results = await self.frameProcessor.stopCountingBlocks()
                 self.saveSession(results: results)
