@@ -4,11 +4,13 @@
 //
 
 import SwiftUI
+import SwiftData
 import PhotosUI
 import Vision
 
 struct LibraryView: View {
-    @StateObject private var viewModel = LibraryViewModel()
+    @Query(sort: \Session.date, order: .reverse) private var sessions: [Session]
+    @Environment(\.modelContext) private var modelContext
 
     @State private var showAddOptions = false
     @State private var showPhotoPicker = false
@@ -23,7 +25,7 @@ struct LibraryView: View {
     var body: some View {
         NavigationStack {
             Group {
-                if viewModel.sessions.isEmpty {
+                if sessions.isEmpty {
                     ContentUnavailableView(
                         "No Sessions Yet",
                         systemImage: "video.slash",
@@ -31,15 +33,20 @@ struct LibraryView: View {
                     )
                 } else {
                     List {
-                        ForEach(viewModel.sessions) { session in
-                            SessionRow(session: session)
+                        ForEach(sessions) { session in
+                            NavigationLink(destination: SessionReplayView(session: session)) {
+                                SessionRow(session: session)
+                            }
                         }
-                        .onDelete(perform: viewModel.deleteSessions)
+                        .onDelete { offsets in
+                            for index in offsets {
+                                SessionStore.shared.delete(sessions[index], context: modelContext)
+                            }
+                        }
                     }
                 }
             }
             .navigationTitle("Library")
-            .onAppear { viewModel.loadSessions() }
             .overlay(alignment: .bottom) {
                 Button {
                     showAddOptions = true
@@ -154,6 +161,7 @@ private struct SessionRow: View {
 struct CameraContainerView: View {
     @StateObject private var viewModel = StreamViewModel()
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.modelContext) private var modelContext
 
     var body: some View {
         StreamView(viewModel: viewModel)
@@ -162,6 +170,7 @@ struct CameraContainerView: View {
             }
             .navigationBarBackButtonHidden(true)
             .onAppear {
+                viewModel.modelContext = modelContext
                 Task { @MainActor in
                     OrientationManager.shared.setOrientation(.landscapeRight)
                 }

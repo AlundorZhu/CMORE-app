@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import SwiftData
 import UIKit
 
 // MARK: - Orientation Control
@@ -51,5 +52,6 @@ struct CMOREApp: App {
         WindowGroup {
             LibraryView()
         }
+        .modelContainer(for: Session.self)
     }
 }

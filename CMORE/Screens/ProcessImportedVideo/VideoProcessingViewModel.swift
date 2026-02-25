@@ -6,6 +6,7 @@
 import Vision
 import AVFoundation
 import UIKit
+import SwiftData
 
 class VideoProcessingViewModel: ObservableObject {
     // MARK: - Published Properties
@@ -15,6 +16,9 @@ class VideoProcessingViewModel: ObservableObject {
     @Published var handedness: HumanHandPoseObservation.Chirality = .right
     @Published var isProcessing = false
     @Published var isDone = false
+
+    /// Injected from the view layer for SwiftData persistence
+    var modelContext: ModelContext?
 
     // MARK: - Private Properties
 
@@ -213,6 +217,8 @@ class VideoProcessingViewModel: ObservableObject {
             videoFileName: videoFileName,
             resultsFileName: resultsFileName
         )
-        SessionStore.shared.add(session)
+        if let modelContext {
+            SessionStore.shared.add(session, context: modelContext)
+        }
     }
 }

@@ -8,6 +8,7 @@
 import Vision
 import AVFoundation
 import AudioToolbox
+import SwiftData
 
 class StreamViewModel: ObservableObject {
     // MARK: - Published Properties
@@ -26,6 +27,9 @@ class StreamViewModel: ObservableObject {
 
     /// The main camera capture session — forwarded from CameraManager
     var captureSession: AVCaptureSession? { cameraManager.captureSession }
+
+    /// Injected from the view layer for SwiftData persistence
+    var modelContext: ModelContext?
 
     // MARK: - Private Properties
 
@@ -144,7 +148,9 @@ class StreamViewModel: ObservableObject {
             videoFileName: videoURL.lastPathComponent,
             resultsFileName: resultsFileName
         )
-        SessionStore.shared.add(session)
+        if let modelContext {
+            SessionStore.shared.add(session, context: modelContext)
+        }
 
         // Clean up state
         self.currentVideoURL = nil

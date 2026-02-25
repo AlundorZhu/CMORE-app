@@ -9,6 +9,7 @@ import Vision
 struct VideoProcessingView: View {
     @StateObject private var viewModel = VideoProcessingViewModel()
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.modelContext) private var modelContext
 
     let videoURL: URL
     let handedness: HumanHandPoseObservation.Chirality
@@ -76,6 +77,7 @@ struct VideoProcessingView: View {
             Task { @MainActor in
                 OrientationManager.shared.setOrientation(.landscapeRight)
             }
+            viewModel.modelContext = modelContext
             viewModel.handedness = handedness
             viewModel.loadVideo(url: videoURL)
         }
