@@ -4,11 +4,12 @@
 //
 
 import SwiftUI
+import SwiftData
 import PhotosUI
 import Vision
 
 struct LibraryView: View {
-    @StateObject private var viewModel = LibraryViewModel()
+    @Query(sort: \Session.date, order: .reverse) private var sessions: [Session]
 
     @State private var showAddOptions = false
     @State private var showPhotoPicker = false
@@ -19,11 +20,12 @@ struct LibraryView: View {
     @State private var selectedHandedness: HumanHandPoseObservation.Chirality = .right
     @State private var showValidationError = false
     @State private var validationErrorMessage = ""
+    @State private var shareItems: [URL] = []
 
     var body: some View {
         NavigationStack {
             Group {
-                if viewModel.sessions.isEmpty {
+                if sessions.isEmpty {
                     ContentUnavailableView(
                         "No Sessions Yet",
                         systemImage: "video.slash",
@@ -31,15 +33,32 @@ struct LibraryView: View {
                     )
                 } else {
                     List {
-                        ForEach(viewModel.sessions) { session in
-                            SessionRow(session: session)
+                        ForEach(sessions) { session in
+                            NavigationLink(destination: SessionReplayView(session: session)) {
+                                SessionRow(session: session)
+                            }
+                            .swipeActions(edge: .trailing) {
+                                Button(role: .destructive) {
+                                    SessionStore.shared.delete(session)
+                                } label: {
+                                    Label("Delete", systemImage: "trash")
+                                }
+
+                                Button {
+                                    let documentsDir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+                                    let videoURL = documentsDir.appendingPathComponent(session.videoFileName)
+                                    let resultsURL = documentsDir.appendingPathComponent(session.resultsFileName)
+                                    shareItems = [videoURL, resultsURL]
+                                } label: {
+                                    Label("Share", systemImage: "square.and.arrow.up")
+                                }
+                                .tint(.blue)
+                            }
                         }
-                        .onDelete(perform: viewModel.deleteSessions)
                     }
                 }
             }
             .navigationTitle("Library")
-            .onAppear { viewModel.loadSessions() }
             .overlay(alignment: .bottom) {
                 Button {
                     showAddOptions = true
@@ -94,6 +113,14 @@ struct LibraryView: View {
                 Button("OK") {}
             } message: {
                 Text(validationErrorMessage)
+            }
+            .sheet(isPresented: Binding(
+                get: { !shareItems.isEmpty },
+                set: { if !$0 { shareItems = [] } }
+            )) {
+                if !shareItems.isEmpty {
+                    ShareSheet(activityItems: shareItems)
+                }
             }
         }
     }
@@ -177,6 +204,17 @@ struct CameraContainerView: View {
                 }
             }
     }
+}
+
+// MARK: - Share Sheet
+private struct ShareSheet: UIViewControllerRepresentable {
+    let activityItems: [Any]
+
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        UIActivityViewController(activityItems: activityItems, applicationActivities: nil)
+    }
+
+    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
 }
 
 #Preview {

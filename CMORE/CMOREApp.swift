@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import SwiftData
 import UIKit
 
 // MARK: - Orientation Control
@@ -46,10 +47,18 @@ class AppDelegate: NSObject, UIApplicationDelegate {
 @main
 struct CMOREApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
+    let container: ModelContainer
+
+    init() {
+        let container = try! ModelContainer(for: Session.self)
+        self.container = container
+        SessionStore.shared.context = container.mainContext
+    }
 
     var body: some Scene {
         WindowGroup {
             LibraryView()
         }
+        .modelContainer(container)
     }
 }
