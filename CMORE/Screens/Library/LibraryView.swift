@@ -20,6 +20,7 @@ struct LibraryView: View {
     @State private var selectedHandedness: HumanHandPoseObservation.Chirality = .right
     @State private var showValidationError = false
     @State private var validationErrorMessage = ""
+    @State private var shareItems: [URL] = []
 
     var body: some View {
         NavigationStack {
@@ -36,10 +37,22 @@ struct LibraryView: View {
                             NavigationLink(destination: SessionReplayView(session: session)) {
                                 SessionRow(session: session)
                             }
-                        }
-                        .onDelete { offsets in
-                            for index in offsets {
-                                SessionStore.shared.delete(sessions[index])
+                            .swipeActions(edge: .trailing) {
+                                Button(role: .destructive) {
+                                    SessionStore.shared.delete(session)
+                                } label: {
+                                    Label("Delete", systemImage: "trash")
+                                }
+
+                                Button {
+                                    let documentsDir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+                                    let videoURL = documentsDir.appendingPathComponent(session.videoFileName)
+                                    let resultsURL = documentsDir.appendingPathComponent(session.resultsFileName)
+                                    shareItems = [videoURL, resultsURL]
+                                } label: {
+                                    Label("Share", systemImage: "square.and.arrow.up")
+                                }
+                                .tint(.blue)
                             }
                         }
                     }
@@ -100,6 +113,14 @@ struct LibraryView: View {
                 Button("OK") {}
             } message: {
                 Text(validationErrorMessage)
+            }
+            .sheet(isPresented: Binding(
+                get: { !shareItems.isEmpty },
+                set: { if !$0 { shareItems = [] } }
+            )) {
+                if !shareItems.isEmpty {
+                    ShareSheet(activityItems: shareItems)
+                }
             }
         }
     }
@@ -183,6 +204,17 @@ struct CameraContainerView: View {
                 }
             }
     }
+}
+
+// MARK: - Share Sheet
+private struct ShareSheet: UIViewControllerRepresentable {
+    let activityItems: [Any]
+
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        UIActivityViewController(activityItems: activityItems, applicationActivities: nil)
+    }
+
+    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
 }
 
 #Preview {
