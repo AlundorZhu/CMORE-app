@@ -82,15 +82,26 @@ struct SessionReplayView: View {
 
                 Spacer()
                 
-                // Scrubber
-                Slider(
-                    value: Binding(
-                        get: { viewModel.currentTime },
-                        set: { viewModel.seek(to: $0) }
-                    ),
-                    in: 0...max(viewModel.duration, 0.01)
-                )
-                .tint(.white)
+                Group{
+                    // Scrubber
+                    Slider(
+                        value: Binding(
+                            get: { viewModel.currentTime },
+                            set: { viewModel.seek(to: $0) }
+                        ),
+                        in: 0...max(viewModel.duration, 0.01)
+                    )
+                    .tint(.gray.opacity(0.7))
+                    
+                    // Time labels
+                    HStack {
+                        Text(formatTime(viewModel.currentTime))
+                        Spacer()
+                        Text(formatTime(viewModel.duration))
+                    }
+                    .font(.caption)
+                    .foregroundColor(.gray)
+                }
                 .padding(.horizontal)
 
                 // Playback controls
@@ -115,15 +126,6 @@ struct SessionReplayView: View {
                 }
                 .padding(.horizontal)
                 .padding(.bottom, 8)
-                
-                // Time labels
-                HStack {
-                    Text(formatTime(viewModel.currentTime))
-                    Spacer()
-                    Text(formatTime(viewModel.duration))
-                }
-                .font(.caption)
-                .foregroundColor(.gray)
             }
             .padding(.all)
         }
