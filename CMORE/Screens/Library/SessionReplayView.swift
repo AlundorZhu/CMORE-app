@@ -54,74 +54,78 @@ struct SessionReplayView: View {
         ZStack {
             Color.black
 
-            VStack(spacing: 0) {
-                // Video + Overlay
-                ZStack {
-                    PlayerView(player: viewModel.player)
-
-                    GeometryReader { geo in
-                        if let frameResult = viewModel.currentFrameResult {
-                            OverlayView(frameResult, geo)
-                        }
+            // Video + Overlay
+            ZStack {
+                PlayerView(player: viewModel.player)
+                
+                GeometryReader { geo in
+                    if let frameResult = viewModel.currentFrameResult {
+                        OverlayView(frameResult, geo)
                     }
                 }
-                .aspectRatio(videoAspect, contentMode: .fit)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+            .aspectRatio(videoAspect, contentMode: .fit)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
 
-                // Controls bar
-                VStack(spacing: 4) {
-                    // Block count
-                    HStack {
-                        Image(systemName: "cube.fill")
-                            .foregroundColor(.white)
-                        Text("\(viewModel.currentBlockCount) blocks")
-                            .font(.headline)
+            // Controls bar
+            VStack(spacing: 3) {
+                
+                // Block count
+                HStack {
+                    Image(systemName: "cube.fill")
+                        .foregroundColor(.white)
+                    Text("\(viewModel.currentBlockCount) blocks")
+                        .font(.headline)
+                        .foregroundColor(.white)
+                }
+                .padding(.top)
+
+                Spacer()
+                
+                // Scrubber
+                Slider(
+                    value: Binding(
+                        get: { viewModel.currentTime },
+                        set: { viewModel.seek(to: $0) }
+                    ),
+                    in: 0...max(viewModel.duration, 0.01)
+                )
+                .tint(.white)
+                .padding(.horizontal)
+
+                // Playback controls
+                HStack(spacing: 40) {
+                    Button { viewModel.skipBackward() } label: {
+                        Image(systemName: "gobackward.5")
+                            .font(.title2)
                             .foregroundColor(.white)
                     }
 
-                    // Scrubber
-                    Slider(
-                        value: Binding(
-                            get: { viewModel.currentTime },
-                            set: { viewModel.seek(to: $0) }
-                        ),
-                        in: 0...max(viewModel.duration, 0.01)
-                    )
-                    .tint(.white)
-
-                    // Time labels
-                    HStack {
-                        Text(formatTime(viewModel.currentTime))
-                        Spacer()
-                        Text(formatTime(viewModel.duration))
+                    Button { viewModel.togglePlayPause() } label: {
+                        Image(systemName: viewModel.isPlaying ? "pause.circle.fill" : "play.circle.fill")
+                            .font(.system(size: 44))
+                            .foregroundColor(.white)
                     }
-                    .font(.caption)
-                    .foregroundColor(.gray)
 
-                    // Playback controls
-                    HStack(spacing: 40) {
-                        Button { viewModel.skipBackward() } label: {
-                            Image(systemName: "gobackward.5")
-                                .font(.title2)
-                                .foregroundColor(.white)
-                        }
-
-                        Button { viewModel.togglePlayPause() } label: {
-                            Image(systemName: viewModel.isPlaying ? "pause.circle.fill" : "play.circle.fill")
-                                .font(.system(size: 44))
-                                .foregroundColor(.white)
-                        }
-
-                        Button { viewModel.skipForward() } label: {
-                            Image(systemName: "goforward.5")
-                                .font(.title2)
-                                .foregroundColor(.white)
-                        }
+                    Button { viewModel.skipForward() } label: {
+                        Image(systemName: "goforward.5")
+                            .font(.title2)
+                            .foregroundColor(.white)
                     }
                 }
                 .padding(.horizontal)
                 .padding(.bottom, 8)
+                
+                // Time labels
+                HStack {
+                    Text(formatTime(viewModel.currentTime))
+                    Spacer()
+                    Text(formatTime(viewModel.duration))
+                }
+                .font(.caption)
+                .foregroundColor(.gray)
             }
+            .padding(.all)
         }
         .ignoresSafeArea()
         .navigationBarBackButtonHidden(true)
