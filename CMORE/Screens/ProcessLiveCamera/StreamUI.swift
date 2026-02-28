@@ -9,6 +9,7 @@ import SwiftUI
 import Vision
 
 struct StreamUI: View {
+    @Environment(\.dismiss) private var dismiss
     
     init(_ viewModel: StreamViewModel) {
         self.viewModel = viewModel
@@ -63,6 +64,14 @@ struct StreamUI: View {
             }
         } message: {
             Text("Save this recording to your library?")
+        }
+        .alert("Camera need to see the box before starting counting blocks.", isPresented: $viewModel.askForBox) {
+            Button("Resume") {
+                viewModel.askForBox = false
+            }
+            Button("Exit", role: .close) {
+                dismiss()
+            }
         }
     }
 }
