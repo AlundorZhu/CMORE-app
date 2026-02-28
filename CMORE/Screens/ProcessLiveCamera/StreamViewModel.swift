@@ -186,7 +186,12 @@ class StreamViewModel: ObservableObject {
 
     /// Starts video recording to a file
     private func startRecording() {
-        guard !isRecording, overlay != nil else { return }
+        guard !isRecording else {
+            #if DEBUG
+            print("Already recording!")
+            #endif
+            return
+        }
         guard overlay?.boxDetection != nil else {
             Task { @MainActor in
                 self.askForBox = true
