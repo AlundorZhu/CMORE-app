@@ -188,7 +188,7 @@ class StreamViewModel: ObservableObject {
     private func startRecording() {
         guard !isRecording else {
             #if DEBUG
-            print("Already recording!")
+            print("Stream viewModel: Already recording!")
             #endif
             return
         }
