@@ -23,6 +23,9 @@ class StreamViewModel: ObservableObject {
 
     /// Use to help identify which hand we are looking at
     @Published var handedness: HumanHandPoseObservation.Chirality = .right
+    
+    /// Ask user for a box when not seen one.
+    @Published var askForBox = false
 
     /// The main camera capture session — forwarded from CameraManager
     var captureSession: AVCaptureSession? { cameraManager.captureSession }
@@ -183,7 +186,18 @@ class StreamViewModel: ObservableObject {
 
     /// Starts video recording to a file
     private func startRecording() {
-        guard !isRecording, overlay != nil, overlay?.boxDetection != nil else { return }
+        guard !isRecording else {
+            #if DEBUG
+            print("Stream viewModel: Already recording!")
+            #endif
+            return
+        }
+        guard overlay?.boxDetection != nil else {
+            Task { @MainActor in
+                self.askForBox = true
+            }
+            return
+        }
 
         isRecording = true
 
