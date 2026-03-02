@@ -364,14 +364,13 @@ actor FrameProcessor {
 
     private func processInOrder(_ frame: CIImage, partialResult: FrameResult) async {
         var nextResult = partialResult
-        let timestamp = nextResult.presentationTime
         let hands = nextResult.hands ?? []
         let currentBox = nextResult.boxDetection!
 
         var blockROIs: [NormalizedRect] = []
         switch currentState {
         case .crossed:
-            if let handROI = defineBloackROI(by: hands, results, timestamp, currentBox, handedness) {
+            if let handROI = defineBloackROI(by: hands, results, nextResult.presentationTime, currentBox, handedness) {
                 blockROIs.append(handROI)
 
                 blockROIs.append(contentsOf: pastBlockCenters.reduce(into: []) { result, blockCenter in
@@ -384,7 +383,7 @@ actor FrameProcessor {
             }
 
         case .detecting:
-            if let roi = defineBloackROI(by: hands, results, timestamp, currentBox, handedness) {
+            if let roi = defineBloackROI(by: hands, results, nextResult.presentationTime, currentBox, handedness) {
                 blockROIs.append(roi)
             }
 
@@ -418,7 +417,7 @@ actor FrameProcessor {
         nextResult.state = nextState
         nextResult.blockDetections = blockDetections
         fullResult(nextResult, frame)
-        appendResult(nextResult)
+        results.append(nextResult)
     }
     
     private func updateState(_ newState: BlockCountingState) {
