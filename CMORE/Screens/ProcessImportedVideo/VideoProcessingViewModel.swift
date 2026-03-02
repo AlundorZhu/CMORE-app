@@ -35,7 +35,6 @@ class VideoProcessingViewModel: ObservableObject {
 
     init() {
         self.frameProcessor = FrameProcessor(
-            onCross: { /* no sound during video processing */ },
             fullResult: { [weak self] result, image in
                 guard let self else { return }
 

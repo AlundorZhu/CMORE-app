@@ -71,12 +71,23 @@ class StreamViewModel: ObservableObject {
 
         cameraManager.onRecordingFinished = { [weak self] url, error in
             guard let self else { return }
-            if let error = error {
-                print("Stream View Model: Recording error: \(error.localizedDescription)")
-                self.currentVideoURL = nil
-            } else {
-                print("Stream View Model: Recording completed! Save or discard?")
-                self.showSaveConfirmation = true
+            
+            Task { @MainActor in
+                if let error = error {
+                    print("Stream View Model: Recording error: \(error.localizedDescription)")
+                    self.currentVideoURL = nil
+                } else {
+                    print("Stream View Model: Recording completed! Save or discard?")
+                    self.showSaveConfirmation = true
+                }
+            }
+        }
+        
+        cameraManager.onFrameDrop = { [weak self] sampleBuffer in
+            guard let self else { return }
+            
+            if self.isRecording && self.recordingStartTime == nil {
+                self.recordingStartTime = sampleBuffer.presentationTimeStamp
             }
         }
     }

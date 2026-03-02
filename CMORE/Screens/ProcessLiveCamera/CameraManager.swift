@@ -23,11 +23,12 @@ class CameraManager: NSObject, AVCaptureFileOutputRecordingDelegate {
 
     // MARK: - Callbacks
 
-    /// Called (on main) when movie file recording finishes
+    /// Called when movie file recording finishes
     var onRecordingFinished: ((URL, Error?) -> Void)!
+    
+    /// Called when AVFoundation dropped a frame
+    var onFrameDrop: ((CMSampleBuffer) -> Void)!
 
-    /// Called (on main) after a Photos-library save attempt completes
-    var onVideoSavedToPhotos: ((Error?) -> Void)!
 
     // MARK: - Private Properties
     
@@ -147,27 +148,6 @@ class CameraManager: NSObject, AVCaptureFileOutputRecordingDelegate {
         movieOutput.stopRecording()
     }
 
-    // MARK: - Video Saving
-
-    func saveVideoToPhotos(_ videoURL: URL) {
-        guard FileManager.default.fileExists(atPath: videoURL.path) else {
-            print("Camera manager: Video file not found, fail to save to photos")
-            return
-        }
-
-        UISaveVideoAtPathToSavedPhotosAlbum(videoURL.path, self, #selector(video(_:didFinishSavingWithError:contextInfo:)), nil)
-    }
-
-    @objc private func video(_ videoPath: String, didFinishSavingWithError error: Error?, contextInfo: UnsafeRawPointer) {
-        if error == nil {
-            let url = URL(fileURLWithPath: videoPath)
-            try? FileManager.default.removeItem(at: url)
-        }
-        Task { @MainActor in
-            self.onVideoSavedToPhotos?(error)
-        }
-    }
-
     // MARK: - AVCaptureFileOutputRecordingDelegate
     
     /// Called when recording starts successfully
@@ -177,9 +157,7 @@ class CameraManager: NSObject, AVCaptureFileOutputRecordingDelegate {
 
     /// Called when recording finishes
     func fileOutput(_ output: AVCaptureFileOutput, didFinishRecordingTo outputFileURL: URL, from connections: [AVCaptureConnection], error: Error?) {
-        Task { @MainActor in
-            self.onRecordingFinished?(outputFileURL, error)
-        }
+        self.onRecordingFinished?(outputFileURL, error)
     }
 
     // MARK: - Private Helpers
@@ -261,5 +239,7 @@ extension CameraManager: AVCaptureVideoDataOutputSampleBufferDelegate {
         print("Camera manager: AVFoundation dropped \(frameNum)th frame at \(currentTime.seconds)s")
         #endif
         frameNum += 1
+        
+        self.onFrameDrop(sampleBuffer)
     }
 }
