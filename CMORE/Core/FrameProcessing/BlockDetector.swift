@@ -55,6 +55,6 @@ struct BlockDetector {
 }
 
 // block length 2.5cm or 1in
-func blockLengthInPixels(scale: Double) -> Double {
+nonisolated func blockLengthInPixels(scale: Double) -> Double {
     return 2.5 / scale
 }

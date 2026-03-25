@@ -7,8 +7,7 @@
 
 import Foundation
 import Vision
-
-struct FrameResult: Codable, Comparable {
+struct FrameResult: Codable, Comparable, Sendable {
     @SecondsCoded var presentationTime: CMTime
     
     /// The state after the processing
@@ -53,7 +52,7 @@ struct BlockDetection: Codable {
 }
 
 @propertyWrapper
-struct SecondsCoded: Codable {
+struct SecondsCoded: Codable, Sendable {
     var wrappedValue: CMTime
 
     init(wrappedValue: CMTime) {
