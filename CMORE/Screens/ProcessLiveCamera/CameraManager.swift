@@ -193,7 +193,7 @@ nonisolated final class CameraManager: NSObject, @unchecked Sendable, AVCaptureF
 }
 
 // MARK: - AVCaptureVideoDataOutputSampleBufferDelegate
-extension CameraManager: @preconcurrency AVCaptureVideoDataOutputSampleBufferDelegate {
+extension CameraManager: AVCaptureVideoDataOutputSampleBufferDelegate {
     func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
         let currentTime = sampleBuffer.presentationTimeStamp
 

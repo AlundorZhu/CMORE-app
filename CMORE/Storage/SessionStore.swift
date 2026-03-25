@@ -13,10 +13,16 @@ actor SessionStore {
     // MARK: - Singleton
     static let shared = SessionStore()
 
-    var context: ModelContext!
+    nonisolated let container: ModelContainer
+    private let context: ModelContext
 
     private var documentsDirectory: URL {
         FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+    }
+
+    private init() {
+        self.container = try! ModelContainer(for: Session.self)
+        self.context = ModelContext(container)
     }
 
     // MARK: - CRUD
