@@ -40,12 +40,18 @@ class StreamViewModel: ObservableObject {
     /// Light up the UI when the box Detection is aligned with lines on the screen
     @Published var isAligned: Bool = false
 
+    /// Current recording status
+    @Published var preRecording: Bool = true
+
     // MARK: - Private Properties
 
     private let cameraManager = CameraManager()
 
     /// The URL of the current video being processed (temporary)
     private var currentVideoURL: URL?
+
+    /// requested file name
+    private var requestedFileName: String?
 
     /// Suffix for both saved video and result
     private var fileNameSuffix: String?
@@ -139,6 +145,10 @@ class StreamViewModel: ObservableObject {
         }
     }
 
+    func updateRecordingStatus() {
+        self.preRecording = (countdown == nil  && !isRecording)
+    }
+
     /// Saves the recording as a session (video stays in Documents, results written to JSON)
     func saveSession() {
         guard let videoURL = currentVideoURL,
@@ -214,6 +224,10 @@ class StreamViewModel: ObservableObject {
         }
     }
 
+    func requestFileNaming(nameRequest: String) {
+        self.requestedFileName = nameRequest
+    }
+
     // MARK: - Private Methods
 
     /// Runs the 3-second countdown then starts video recording
@@ -230,6 +244,7 @@ class StreamViewModel: ObservableObject {
             for tick in [3, 2, 1] {
                 guard !Task.isCancelled else { return }
                 self.countdown = tick
+                AudioServicesPlaySystemSound(1057) // tick sound
                 try? await Task.sleep(nanoseconds: 1_000_000_000)
             }
             guard !Task.isCancelled else {
@@ -237,6 +252,7 @@ class StreamViewModel: ObservableObject {
                 return
             }
             self.countdown = nil
+            AudioServicesPlaySystemSound(1005) // buzzer
             self.actuallyStartRecording()
         }
     }
@@ -247,7 +263,13 @@ class StreamViewModel: ObservableObject {
         recordingTimeRemaining = maxRecordingSeconds
 
         let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
-        let suffix = Date().timeIntervalSince1970
+
+        if (self.requestedFileName == nil) {
+            let suffix = Date().timeIntervalSince1970
+        } else {
+            let suffix = self.requestedFileName
+        }
+        
         let videoFileName = "CMORE_Recording_\(suffix).mov"
         fileNameSuffix = String(suffix)
         let outputURL = documentsPath.appendingPathComponent(videoFileName)
@@ -281,6 +303,10 @@ class StreamViewModel: ObservableObject {
         recordingTimerTask?.cancel()
         recordingTimerTask = nil
         isRecording = false
+        preRecording = true
+        requestedFileName = nil
+
+        AudioServicesPlaySystemSound(1005) // buzzer
 
         Task {
             result = await frameProcessor.stopCountingBlocks()

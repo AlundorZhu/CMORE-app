@@ -8,6 +8,12 @@
 import SwiftUI
 import Vision
 
+private enum NamingStage {
+    case idle
+    case choosing
+    case customEntry
+}
+
 struct StreamUI: View {
     @Environment(\.dismiss) private var dismiss
     
@@ -42,7 +48,11 @@ struct StreamUI: View {
             HStack{
                 Spacer()
                 MovieCaptureButton(isRecording: $viewModel.isRecording, action: { _ in
-                    viewModel.toggleRecording()
+                    if viewModel.preRecording() {
+                        namingStage = .choosing
+                    } else {
+                        viewModel.toggleRecording()
+                    }
                 })
                 .aspectRatio(1.0, contentMode: .fit)
                 .frame(width: 68)
@@ -52,6 +62,19 @@ struct StreamUI: View {
             // Countdown overlay
             if let count = viewModel.countdown {
                 CountdownOverlayView(count: count)
+            }
+
+            if namingStage == .customEntry {
+                FileNamingPopup(
+                    onGoBack: {
+                        namingStage = .choosing
+                    },
+                    onSave: { name in
+                        viewModel.requestFileNaming(nameRequest: name)
+                        namingStage = .idle
+                        viewModel.toggleRecording()
+                    }
+                )
             }
         }
         .background(Color.clear)
@@ -71,6 +94,21 @@ struct StreamUI: View {
                     }
                 }
         )
+        .confirmationDialog("Name your file", isPresented: Binding(
+            get: { namingStage == .choosing },
+            set: { if !$0 { namingStage = .idle } }
+        ), titleVisibility: .visible) {
+            Button("Default") {
+                namingStage = .idle
+                viewModel.toggleRecording()
+            }
+            Button("Custom") {
+                namingStage = .customEntry
+            }
+            Button("Cancel", role: .cancel) {
+                namingStage = .idle
+            }
+        }
         .alert("Save session?", isPresented: $viewModel.showSaveConfirmation) {
             Button("Save") {
                 viewModel.saveSession()
@@ -210,6 +248,53 @@ struct RecordingTimerView: View {
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
         .background(.black.opacity(0.55), in: Capsule())
+    }
+}
+
+struct FileNamingPopup: View {
+    let onGoBack: () -> Void
+    let onSave: (String) -> Void
+
+    @State private var customName: String = ""
+
+    var body: some View {
+        ZStack {
+            Color.black.opacity(0.35)
+                .ignoresSafeArea()
+
+            VStack(spacing: 16) {
+                Text("Enter a custom file name")
+                    .font(.headline)
+
+                TextField("File name", text: $customName)
+                    .textFieldStyle(.roundedBorder)
+                    .autocorrectionDisabled()
+                    .padding(.horizontal, 4)
+
+                HStack(spacing: 12) {
+                    Button("Go Back") {
+                        onGoBack()
+                    }
+                    .buttonStyle(.bordered)
+
+                    Button("Save") {
+                        let trimmed = customName.trimmingCharacters(in: .whitespacesAndNewlines)
+                        guard !trimmed.isEmpty else { return }
+                        onSave(trimmed)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(customName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
+            }
+            .padding(24)
+            .frame(maxWidth: 320)
+            .background(.regularMaterial)
+            .clipShape(RoundedRectangle(cornerRadius: 16))
+            .shadow(radius: 20)
+            .padding(32)
+        }
+        .transition(.opacity.combined(with: .scale(scale: 0.95)))
+        .animation(.easeInOut(duration: 0.2), value: customName.isEmpty)
     }
 }
 

@@ -65,6 +65,7 @@ struct BoxShape: Shape {
 
 #Preview {
     ZStack {
+        var scale: CGFloat = 0.3
         Color.black.ignoresSafeArea()
         
         // Now it behaves exactly like a native SwiftUI Shape (like Rectangle or Circle)
@@ -74,6 +75,7 @@ struct BoxShape: Shape {
                 style: StrokeStyle(lineWidth: 4, lineCap: .round, lineJoin: .round)
             )
             .aspectRatio(16/9, contentMode: .fit)
+            .scaleEffect(1 - scale)
             .padding(.all, 70)
     }
 }
