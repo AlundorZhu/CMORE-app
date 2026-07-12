@@ -22,6 +22,7 @@ struct StreamUI: View {
     }
     
     @ObservedObject var viewModel: StreamViewModel
+    @State private var namingStage: NamingStage = .idle
     
     var body: some View {
         ZStack {
@@ -48,7 +49,7 @@ struct StreamUI: View {
             HStack{
                 Spacer()
                 MovieCaptureButton(isRecording: $viewModel.isRecording, action: { _ in
-                    if viewModel.preRecording() {
+                    if viewModel.isPreRecording() {
                         namingStage = .choosing
                     } else {
                         viewModel.toggleRecording()
@@ -61,7 +62,7 @@ struct StreamUI: View {
 
             // Countdown overlay
             if let count = viewModel.countdown {
-                CountdownOverlayView(count: count)
+                CountdownOverlayView(count: count)	
             }
 
             if namingStage == .customEntry {
@@ -96,7 +97,11 @@ struct StreamUI: View {
         )
         .confirmationDialog("Name your file", isPresented: Binding(
             get: { namingStage == .choosing },
-            set: { if !$0 { namingStage = .idle } }
+            set: {
+                if !$0 && namingStage == .choosing {
+                    namingStage = .idle
+                }
+            }
         ), titleVisibility: .visible) {
             Button("Default") {
                 namingStage = .idle

@@ -31,6 +31,7 @@ actor SessionStore {
     func add(
         id: UUID = UUID(),
         date: Date = Date(),
+        name: String,
         blockCount: Int,
         videoFileName: String,
         resultsFileName: String,
@@ -39,6 +40,7 @@ actor SessionStore {
         let session = Session(
             id: id,
             date: date,
+            name: name,
             blockCount: blockCount,
             videoFileName: videoFileName,
             resultsFileName: resultsFileName,

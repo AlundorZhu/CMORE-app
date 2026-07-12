@@ -40,9 +40,6 @@ class StreamViewModel: ObservableObject {
     /// Light up the UI when the box Detection is aligned with lines on the screen
     @Published var isAligned: Bool = false
 
-    /// Current recording status
-    @Published var preRecording: Bool = true
-
     // MARK: - Private Properties
 
     private let cameraManager = CameraManager()
@@ -145,8 +142,8 @@ class StreamViewModel: ObservableObject {
         }
     }
 
-    func updateRecordingStatus() {
-        self.preRecording = (countdown == nil  && !isRecording)
+    func isPreRecording() -> Bool{
+        return (countdown == nil  && !isRecording)
     }
 
     /// Saves the recording as a session (video stays in Documents, results written to JSON)
@@ -182,6 +179,7 @@ class StreamViewModel: ObservableObject {
         Task {
             do {
                 try await SessionStore.shared.add(
+                    name: fileNameSuffix,
                     blockCount: blockCount,
                     videoFileName: videoURL.lastPathComponent,
                     resultsFileName: resultsFileName,
@@ -229,6 +227,11 @@ class StreamViewModel: ObservableObject {
     }
 
     // MARK: - Private Methods
+    
+    private func playSound(_ soundID: SystemSoundID) {
+        guard !UserDefaults.standard.bool(forKey: "soundMuted") else { return }
+        AudioServicesPlaySystemSound(soundID)
+    }
 
     /// Runs the 3-second countdown then starts video recording
     private func startRecording() {
@@ -244,7 +247,7 @@ class StreamViewModel: ObservableObject {
             for tick in [3, 2, 1] {
                 guard !Task.isCancelled else { return }
                 self.countdown = tick
-                AudioServicesPlaySystemSound(1057) // tick sound
+                self.playSound(1104)
                 try? await Task.sleep(nanoseconds: 1_000_000_000)
             }
             guard !Task.isCancelled else {
@@ -252,26 +255,24 @@ class StreamViewModel: ObservableObject {
                 return
             }
             self.countdown = nil
-            AudioServicesPlaySystemSound(1005) // buzzer
             self.actuallyStartRecording()
         }
     }
 
     private func actuallyStartRecording() {
-        if !UserDefaults.standard.bool(forKey: "soundMuted") { AudioServicesPlaySystemSound(1117) } // "begin recording" chime
+        self.playSound(1117) // "begin recording" chime
         isRecording = true
         recordingTimeRemaining = maxRecordingSeconds
 
         let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
 
-        if (self.requestedFileName == nil) {
-            let suffix = Date().timeIntervalSince1970
-        } else {
-            let suffix = self.requestedFileName
+        var suffix = String(Date().timeIntervalSince1970)
+        if let requestedFileName {
+            suffix = requestedFileName
         }
         
         let videoFileName = "CMORE_Recording_\(suffix).mov"
-        fileNameSuffix = String(suffix)
+        fileNameSuffix = suffix
         let outputURL = documentsPath.appendingPathComponent(videoFileName)
         currentVideoURL = outputURL
 
@@ -303,8 +304,6 @@ class StreamViewModel: ObservableObject {
         recordingTimerTask?.cancel()
         recordingTimerTask = nil
         isRecording = false
-        preRecording = true
-        requestedFileName = nil
 
         AudioServicesPlaySystemSound(1005) // buzzer
 

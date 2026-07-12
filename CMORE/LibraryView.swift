@@ -158,9 +158,9 @@ private struct SessionRow: View {
                 )
 
             VStack(alignment: .leading, spacing: 4) {
-                Text(session.date, style: .date)
+                Text(session.name.isEmpty ? session.date.formatted(date: .abbreviated, time: .omitted) : session.name)
                     .font(.headline)
-                Text(session.date, style: .time)
+                Text(session.date.formatted(date: .abbreviated, time: .shortened))
                     .font(.caption)
                     .foregroundColor(.secondary)
             }
