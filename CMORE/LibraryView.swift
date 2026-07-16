@@ -7,6 +7,7 @@ import SwiftUI
 import SwiftData
 import PhotosUI
 import Vision
+import AudioToolbox
 
 struct LibraryView: View {
     @Query(sort: \Session.date, order: .reverse) private var sessions: [Session]
@@ -63,7 +64,10 @@ struct LibraryView: View {
             .navigationTitle("Library")
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button { soundMuted.toggle() } label: {
+                    Button {
+                        soundMuted.toggle()
+                        playSoundToggleFeedback()
+                    } label: {
                         Image(systemName: soundMuted ? "bell.slash.fill" : "bell.fill")
                     }
                 }
@@ -140,6 +144,11 @@ struct LibraryView: View {
                 }
             }
         }
+    }
+
+    private func playSoundToggleFeedback() {
+        let soundID: SystemSoundID = soundMuted ? 1104 : 1117
+        AudioServicesPlaySystemSound(soundID)
     }
 }
 
