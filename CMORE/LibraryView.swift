@@ -20,6 +20,9 @@ struct LibraryView: View {
     @State private var showValidationError = false
     @State private var validationErrorMessage = ""
     @State private var shareItems: [URL] = []
+    @State private var sessionIDToRename: UUID?
+    @State private var renameText = ""
+    @State private var showRenameAlert = false
     @AppStorage("soundMuted") private var soundMuted = false
 
     var body: some View {
@@ -35,7 +38,9 @@ struct LibraryView: View {
                     List {
                         ForEach(sessions) { session in
                             NavigationLink(destination: SessionReplayView(session: session)) {
-                                SessionRow(session: session)
+                                SessionRow(session: session) {
+                                    prepareRename(session)
+                                }
                             }
                             .swipeActions(edge: .trailing) {
                                 Button(role: .destructive) {
@@ -56,6 +61,7 @@ struct LibraryView: View {
                                     Label("Share", systemImage: "square.and.arrow.up")
                                 }
                                 .tint(.blue)
+
                             }
                         }
                     }
@@ -116,6 +122,16 @@ struct LibraryView: View {
             } message: {
                 Text(validationErrorMessage)
             }
+            .alert("Rename your file", isPresented: $showRenameAlert) {
+                TextField("File name", text: $renameText)
+                    .autocorrectionDisabled()
+                Button("Save") {
+                    renameSelectedSession()
+                }
+                Button("Cancel", role: .cancel) {
+                    clearRenameState()
+                }
+            }
             .sheet(isPresented: Binding(
                 get: { !shareItems.isEmpty },
                 set: { if !$0 { shareItems = [] } }
@@ -146,6 +162,33 @@ struct LibraryView: View {
         }
     }
 
+    private func prepareRename(_ session: Session) {
+        sessionIDToRename = session.id
+        renameText = session.name.isEmpty ? session.date.formatted(date: .abbreviated, time: .omitted) : session.name
+        showRenameAlert = true
+    }
+
+    private func renameSelectedSession() {
+        guard let sessionIDToRename else { return }
+        let newName = renameText
+
+        Task {
+            do {
+                try await SessionStore.shared.rename(sessionIDToRename, to: newName)
+            } catch {
+                dprint("LibraryView: failed to rename session")
+            }
+            await MainActor.run {
+                clearRenameState()
+            }
+        }
+    }
+
+    private func clearRenameState() {
+        sessionIDToRename = nil
+        renameText = ""
+    }
+
     private func playSoundToggleFeedback() {
         let soundID: SystemSoundID = soundMuted ? 1104 : 1117
         AudioServicesPlaySystemSound(soundID)
@@ -155,6 +198,7 @@ struct LibraryView: View {
 // MARK: - Session Row
 private struct SessionRow: View {
     let session: Session
+    let onRename: () -> Void
 
     var body: some View {
         HStack(spacing: 12) {
@@ -167,8 +211,21 @@ private struct SessionRow: View {
                 )
 
             VStack(alignment: .leading, spacing: 4) {
-                Text(session.name.isEmpty ? session.date.formatted(date: .abbreviated, time: .omitted) : session.name)
-                    .font(.headline)
+                HStack(spacing: 6) {
+                    Text(session.name.isEmpty ? session.date.formatted(date: .abbreviated, time: .omitted) : session.name)
+                        .font(.headline)
+
+                    Button(action: onRename) {
+                        Image(systemName: "pencil")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(.secondary)
+                            .frame(width: 28, height: 28)
+                            .background(.secondary.opacity(0.16), in: RoundedRectangle(cornerRadius: 6))
+                    }
+                    .buttonStyle(.borderless)
+                    .accessibilityLabel("Rename")
+                }
+
                 Text(session.date.formatted(date: .abbreviated, time: .shortened))
                     .font(.caption)
                     .foregroundColor(.secondary)
@@ -205,8 +262,8 @@ struct CameraContainerView: View {
                     OrientationManager.shared.setOrientation(.all)
                 }
             }
-            .onChange(of: viewModel.showSaveConfirmation) { wasShowing, isShowing in
-                if wasShowing && !isShowing {
+            .onChange(of: viewModel.shouldDismissCamera) { _, shouldDismiss in
+                if shouldDismiss {
                     dismiss()
                 }
             }

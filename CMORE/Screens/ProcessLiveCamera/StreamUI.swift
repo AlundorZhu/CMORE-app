@@ -49,11 +49,7 @@ struct StreamUI: View {
             HStack{
                 Spacer()
                 MovieCaptureButton(isRecording: $viewModel.isRecording, action: { _ in
-                    if viewModel.isPreRecording() {
-                        namingStage = .choosing
-                    } else {
-                        viewModel.toggleRecording()
-                    }
+                    viewModel.toggleRecording()
                 })
                 .aspectRatio(1.0, contentMode: .fit)
                 .frame(width: 68)
@@ -71,9 +67,8 @@ struct StreamUI: View {
                         namingStage = .choosing
                     },
                     onSave: { name in
-                        viewModel.requestFileNaming(nameRequest: name)
                         namingStage = .idle
-                        viewModel.toggleRecording()
+                        viewModel.saveSession(nameRequest: name)
                     }
                 )
             }
@@ -105,18 +100,19 @@ struct StreamUI: View {
         ), titleVisibility: .visible) {
             Button("Default") {
                 namingStage = .idle
-                viewModel.toggleRecording()
+                viewModel.saveSession()
             }
             Button("Custom") {
                 namingStage = .customEntry
             }
             Button("Cancel", role: .cancel) {
                 namingStage = .idle
+                viewModel.showSaveConfirmation = true
             }
         }
         .alert("Save session?", isPresented: $viewModel.showSaveConfirmation) {
             Button("Save") {
-                viewModel.saveSession()
+                namingStage = .choosing
             }
             Button("Discard", role: .destructive) {
                 viewModel.discardSession()

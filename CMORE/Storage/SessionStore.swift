@@ -91,4 +91,58 @@ actor SessionStore {
             try delete(session)
         }
     }
+
+    func rename(_ id: UUID, to name: String) throws {
+        let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedName.isEmpty else { return }
+
+        let predicate = #Predicate<Session> { Session in
+            Session.id == id
+        }
+
+        var fetchDescriptor = FetchDescriptor<Session>(predicate: predicate)
+        fetchDescriptor.fetchLimit = 1
+
+        guard let session = try context.fetch(fetchDescriptor).first else { return }
+        session.name = trimmedName
+        
+        let documentsDir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        
+        // move video url
+        let oldVideoURL = URL(fileURLWithPath: session.videoFileName)
+        let newVideoFileName = "CMORE_Recording_\(session.name).mov"
+        let newVideoURL = documentsDir.appendingPathComponent(newVideoFileName)
+
+        do {
+            if FileManager.default.fileExists(atPath: newVideoURL.path) {
+                try FileManager.default.removeItem(at: newVideoURL)
+            }
+            try FileManager.default.moveItem(at: oldVideoURL, to: newVideoURL)
+            session.videoFileName = newVideoFileName
+        } catch {
+            print("Stream View Model: Error renaming recording: \(error)")
+        }
+        
+        // move results url
+        let oldResultsFileURL = URL(fileURLWithPath: session.resultsFileName)
+        let newResultsFileName = "CMORE_Results_\(session.name).json"
+        let newResultsFileURL = documentsDir.appendingPathComponent(newResultsFileName)
+
+        do {
+            if FileManager.default.fileExists(atPath: newResultsFileURL.path) {
+                try FileManager.default.removeItem(at: newResultsFileURL)
+            }
+            try FileManager.default.moveItem(at: oldResultsFileURL, to: newResultsFileURL)
+            session.resultsFileName = newResultsFileName
+        } catch {
+            print("Stream View Model: Error renaming results file: \(error)")
+        }
+
+        do {
+            try context.save()
+        } catch {
+            dprint("Session store rename error: \(error)")
+            throw error
+        }
+    }
 }

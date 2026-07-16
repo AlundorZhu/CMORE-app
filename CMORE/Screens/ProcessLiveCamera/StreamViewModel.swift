@@ -19,6 +19,9 @@ class StreamViewModel: ObservableObject {
     /// Whether to show the save confirmation dialog
     @Published var showSaveConfirmation = false
 
+    /// Signals that the camera screen can dismiss after the pending recording is handled.
+    @Published var shouldDismissCamera = false
+
     /// Show the visualization overlay in real-time
     @Published var overlay: FrameResult?
 
@@ -47,8 +50,6 @@ class StreamViewModel: ObservableObject {
     /// The URL of the current video being processed (temporary)
     private var currentVideoURL: URL?
 
-    /// requested file name
-    private var requestedFileName: String?
 
     /// Suffix for both saved video and result
     private var fileNameSuffix: String?
@@ -142,14 +143,10 @@ class StreamViewModel: ObservableObject {
         }
     }
 
-    func isPreRecording() -> Bool{
-        return (countdown == nil  && !isRecording)
-    }
-
     /// Saves the recording as a session (video stays in Documents, results written to JSON)
-    func saveSession() {
+    func saveSession(nameRequest: String? = nil) {
         guard let videoURL = currentVideoURL,
-              let fileNameSuffix = fileNameSuffix,
+              let defaultFileNameSuffix = fileNameSuffix,
               let result = result,
               !result.isEmpty,
               let recordingStartTime = recordingStartTime else {
@@ -157,9 +154,25 @@ class StreamViewModel: ObservableObject {
             return
         }
 
-        // Save results JSON
         let documentsDir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-        let resultsFileName = "CMORE_Results_\(fileNameSuffix).json"
+        let sessionName = sanitizedFileNameSuffix(nameRequest) ?? defaultFileNameSuffix
+        let videoFileName = "CMORE_Recording_\(sessionName).mov"
+        let finalVideoURL = documentsDir.appendingPathComponent(videoFileName)
+
+        if finalVideoURL != videoURL {
+            do {
+                if FileManager.default.fileExists(atPath: finalVideoURL.path) {
+                    try FileManager.default.removeItem(at: finalVideoURL)
+                }
+                try FileManager.default.moveItem(at: videoURL, to: finalVideoURL)
+                currentVideoURL = finalVideoURL
+            } catch {
+                print("Stream View Model: Error renaming recording: \(error)")
+            }
+        }
+
+        // Save results JSON
+        let resultsFileName = "CMORE_Results_\(sessionName).json"
         let resultsURL = documentsDir.appendingPathComponent(resultsFileName)
 
         do {
@@ -179,9 +192,9 @@ class StreamViewModel: ObservableObject {
         Task {
             do {
                 try await SessionStore.shared.add(
-                    name: fileNameSuffix,
+                    name: sessionName,
                     blockCount: blockCount,
-                    videoFileName: videoURL.lastPathComponent,
+                    videoFileName: finalVideoURL.lastPathComponent,
                     resultsFileName: resultsFileName,
                     handedness: handedness
                 )
@@ -195,6 +208,7 @@ class StreamViewModel: ObservableObject {
             self.fileNameSuffix = nil
             self.recordingStartTime = nil
             self.showSaveConfirmation = false
+            self.shouldDismissCamera = true
         }
     }
 
@@ -210,6 +224,7 @@ class StreamViewModel: ObservableObject {
         recordingStartTime = nil
 
         showSaveConfirmation = false
+        shouldDismissCamera = true
     }
 
     /// Starts the camera feed and begins frame processing
@@ -222,11 +237,18 @@ class StreamViewModel: ObservableObject {
         }
     }
 
-    func requestFileNaming(nameRequest: String) {
-        self.requestedFileName = nameRequest
-    }
-
     // MARK: - Private Methods
+
+    private func sanitizedFileNameSuffix(_ name: String?) -> String? {
+        guard let name else { return nil }
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+
+        let invalidCharacters = CharacterSet(charactersIn: "/:")
+        return trimmed
+            .components(separatedBy: invalidCharacters)
+            .joined(separator: "-")
+    }
     
     private func playSound(_ soundID: SystemSoundID) {
         guard !UserDefaults.standard.bool(forKey: "soundMuted") else { return }
@@ -266,11 +288,7 @@ class StreamViewModel: ObservableObject {
 
         let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
 
-        var suffix = String(Date().timeIntervalSince1970)
-        if let requestedFileName {
-            suffix = requestedFileName
-        }
-        
+        let suffix = String(Date().timeIntervalSince1970)
         let videoFileName = "CMORE_Recording_\(suffix).mov"
         fileNameSuffix = suffix
         let outputURL = documentsPath.appendingPathComponent(videoFileName)
