@@ -109,7 +109,7 @@ actor SessionStore {
         let documentsDir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
         
         // move video url
-        let oldVideoURL = URL(fileURLWithPath: session.videoFileName)
+        let oldVideoURL = documentsDir.appendingPathComponent(session.videoFileName)
         let newVideoFileName = "CMORE_Recording_\(session.name).mov"
         let newVideoURL = documentsDir.appendingPathComponent(newVideoFileName)
 
@@ -124,7 +124,7 @@ actor SessionStore {
         }
         
         // move results url
-        let oldResultsFileURL = URL(fileURLWithPath: session.resultsFileName)
+        let oldResultsFileURL = documentsDir.appendingPathComponent(session.resultsFileName)
         let newResultsFileName = "CMORE_Results_\(session.name).json"
         let newResultsFileURL = documentsDir.appendingPathComponent(newResultsFileName)
 
