@@ -336,14 +336,19 @@ class StreamViewModel: ObservableObject {
         guard let box else { return false }
 
         // BoxShapeConstants use screen-space y (0 = top).
+        // The guide is drawn with .scaleEffect(scaleFactor), which scales around
+        // the view center (0.5, 0.5), so apply the same transform here.
         // NormalizedPoint stores Vision-space y (0 = bottom), so flip with (1 - y).
+        let scale = Double(LiveUIConstants.scaleFactor)
+        func scaled(_ v: CGFloat) -> Double { 0.5 + (Double(v) - 0.5) * scale }
+
         let checks: [(String, Double, Double)] = [
-            ("Back top left",      Double(LiveUIConstants.backLeftX),         1 - Double(LiveUIConstants.backRimY)),
-            ("Back top right",     Double(LiveUIConstants.backRightX),        1 - Double(LiveUIConstants.backRimY)),
-            ("Front top left",     Double(LiveUIConstants.frontTopLeftX),     1 - Double(LiveUIConstants.frontRimY)),
-            ("Front top right",    Double(LiveUIConstants.frontTopRightX),    1 - Double(LiveUIConstants.frontRimY)),
-            ("Front bottom left",  Double(LiveUIConstants.frontBottomLeftX),  1 - Double(LiveUIConstants.bottomY)),
-            ("Front bottom right", Double(LiveUIConstants.frontBottomRightX), 1 - Double(LiveUIConstants.bottomY)),
+            ("Back top left",      scaled(LiveUIConstants.backLeftX),         1 - scaled(LiveUIConstants.backRimY)),
+            ("Back top right",     scaled(LiveUIConstants.backRightX),        1 - scaled(LiveUIConstants.backRimY)),
+            ("Front top left",     scaled(LiveUIConstants.frontTopLeftX),     1 - scaled(LiveUIConstants.frontRimY)),
+            ("Front top right",    scaled(LiveUIConstants.frontTopRightX),    1 - scaled(LiveUIConstants.frontRimY)),
+            ("Front bottom left",  scaled(LiveUIConstants.frontBottomLeftX),  1 - scaled(LiveUIConstants.bottomY)),
+            ("Front bottom right", scaled(LiveUIConstants.frontBottomRightX), 1 - scaled(LiveUIConstants.bottomY)),
         ]
 
         return checks.allSatisfy { name, gx, gy in
