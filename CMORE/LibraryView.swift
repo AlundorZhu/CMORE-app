@@ -52,7 +52,7 @@ struct LibraryView: View {
 
                                 Button {
                                     prepareRename(session)
-                                    
+
                                     let documentsDir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
                                     let videoURL = documentsDir.appendingPathComponent(session.videoFileName)
                                     let resultsURL = documentsDir.appendingPathComponent(session.resultsFileName)
@@ -222,7 +222,7 @@ private struct SessionRow: View {
 
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 6) {
-                    Text(session.name.isEmpty ? session.date.formatted(date: .abbreviated, time: .omitted) : session.name)
+                    Text(session.name.isEmpty ? (session.date, style: .date) : session.name)
                         .font(.headline)
                 }
 

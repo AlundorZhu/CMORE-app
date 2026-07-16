@@ -157,7 +157,6 @@ class StreamViewModel: ObservableObject {
         let documentsDir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
 
         let cleanFileNameRequest = sanitizedFileNameSuffix(nameRequest)
-        let sessionName = cleanFileNameRequest ?? defaultFileNameSuffix
 
         let videoFileName: String
         if let cleanFileNameRequest {
@@ -203,6 +202,9 @@ class StreamViewModel: ObservableObject {
 
         // Compute block count from results
         let blockCount = result.compactMap(\.blockTransfered).max() ?? 0
+
+        // if not custom, should be empty
+        let sessionName = cleanFileNameRequest ?? ""
 
         Task {
             do {
