@@ -38,9 +38,7 @@ struct LibraryView: View {
                     List {
                         ForEach(sessions) { session in
                             NavigationLink(destination: SessionReplayView(session: session)) {
-                                SessionRow(session: session) {
-                                    prepareRename(session)
-                                }
+                                SessionRow(session: session) 
                             }
                             .swipeActions(edge: .trailing) {
                                 Button(role: .destructive) {
@@ -53,6 +51,8 @@ struct LibraryView: View {
                                 }
 
                                 Button {
+                                    prepareRename(session)
+                                    
                                     let documentsDir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
                                     let videoURL = documentsDir.appendingPathComponent(session.videoFileName)
                                     let resultsURL = documentsDir.appendingPathComponent(session.resultsFileName)
@@ -62,6 +62,16 @@ struct LibraryView: View {
                                 }
                                 .tint(.blue)
 
+                                Button(action: onRename) {
+                                    Image(systemName: "pencil")
+                                        .font(.system(size: 12, weight: .semibold))
+                                        .foregroundStyle(.secondary)
+                                        .frame(width: 28, height: 28)
+                                        .background(.secondary.opacity(0.16), in: RoundedRectangle(cornerRadius: 6))
+                                }
+                                .buttonStyle(.borderless)
+                                .accessibilityLabel("Rename")
+                                
                             }
                         }
                     }
@@ -214,16 +224,6 @@ private struct SessionRow: View {
                 HStack(spacing: 6) {
                     Text(session.name.isEmpty ? session.date.formatted(date: .abbreviated, time: .omitted) : session.name)
                         .font(.headline)
-
-                    Button(action: onRename) {
-                        Image(systemName: "pencil")
-                            .font(.system(size: 12, weight: .semibold))
-                            .foregroundStyle(.secondary)
-                            .frame(width: 28, height: 28)
-                            .background(.secondary.opacity(0.16), in: RoundedRectangle(cornerRadius: 6))
-                    }
-                    .buttonStyle(.borderless)
-                    .accessibilityLabel("Rename")
                 }
 
                 Text(session.date.formatted(date: .abbreviated, time: .shortened))

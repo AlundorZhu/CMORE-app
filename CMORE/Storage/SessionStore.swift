@@ -110,7 +110,7 @@ actor SessionStore {
         
         // move video url
         let oldVideoURL = documentsDir.appendingPathComponent(session.videoFileName)
-        let newVideoFileName = "CMORE_Recording_\(session.name).mov"
+        let newVideoFileName = "\(session.name).mov"
         let newVideoURL = documentsDir.appendingPathComponent(newVideoFileName)
 
         do {
@@ -125,7 +125,7 @@ actor SessionStore {
         
         // move results url
         let oldResultsFileURL = documentsDir.appendingPathComponent(session.resultsFileName)
-        let newResultsFileName = "CMORE_Results_\(session.name).json"
+        let newResultsFileName = "\(session.name).json"
         let newResultsFileURL = documentsDir.appendingPathComponent(newResultsFileName)
 
         do {

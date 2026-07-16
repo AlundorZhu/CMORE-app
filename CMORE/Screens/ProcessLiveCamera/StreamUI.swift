@@ -90,29 +90,13 @@ struct StreamUI: View {
                     }
                 }
         )
-        .confirmationDialog("Name your file", isPresented: Binding(
-            get: { namingStage == .choosing },
-            set: {
-                if !$0 && namingStage == .choosing {
-                    namingStage = .idle
-                }
-            }
-        ), titleVisibility: .visible) {
-            Button("Default") {
+        .alert("Save session?", isPresented: $viewModel.showSaveConfirmation) {
+            Button("Save") {
                 namingStage = .idle
                 viewModel.saveSession()
             }
-            Button("Custom") {
+            Button("Save As") {
                 namingStage = .customEntry
-            }
-            Button("Cancel", role: .cancel) {
-                namingStage = .idle
-                viewModel.showSaveConfirmation = true
-            }
-        }
-        .alert("Save session?", isPresented: $viewModel.showSaveConfirmation) {
-            Button("Save") {
-                namingStage = .choosing
             }
             Button("Discard", role: .destructive) {
                 viewModel.discardSession()

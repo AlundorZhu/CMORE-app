@@ -155,8 +155,17 @@ class StreamViewModel: ObservableObject {
         }
 
         let documentsDir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-        let sessionName = sanitizedFileNameSuffix(nameRequest) ?? defaultFileNameSuffix
-        let videoFileName = "CMORE_Recording_\(sessionName).mov"
+
+        let cleanFileNameRequest = sanitizedFileNameSuffix(nameRequest)
+        let sessionName = cleanFileNameRequest ?? defaultFileNameSuffix
+
+        let videoFileName: String
+        if let cleanFileNameRequest {
+            videoFileName = "\(cleanFileNameRequest).mov"
+        } else {
+            videoFileName = "CMORE_Recording_\(defaultFileNameSuffix).mov"
+        }
+
         let finalVideoURL = documentsDir.appendingPathComponent(videoFileName)
 
         if finalVideoURL != videoURL {
@@ -172,7 +181,13 @@ class StreamViewModel: ObservableObject {
         }
 
         // Save results JSON
-        let resultsFileName = "CMORE_Results_\(sessionName).json"
+        let resultsFileName: String
+        if let cleanFileNameRequest {
+            resultsFileName = "\(cleanFileNameRequest).json"
+        } else {
+            resultsFileName = "CMORE_Recording_\(defaultFileNameSuffix).json"
+        }
+
         let resultsURL = documentsDir.appendingPathComponent(resultsFileName)
 
         do {
@@ -310,6 +325,7 @@ class StreamViewModel: ObservableObject {
                 self.recordingTimeRemaining = remaining
             }
             if !Task.isCancelled {
+                playSound(1005) // buzzer
                 self.stopRecording()
             }
         }
@@ -322,8 +338,6 @@ class StreamViewModel: ObservableObject {
         recordingTimerTask?.cancel()
         recordingTimerTask = nil
         isRecording = false
-
-        AudioServicesPlaySystemSound(1005) // buzzer
 
         Task {
             result = await frameProcessor.stopCountingBlocks()
