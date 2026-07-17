@@ -51,8 +51,6 @@ struct LibraryView: View {
                                 }
 
                                 Button {
-                                    prepareRename(session)
-
                                     let documentsDir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
                                     let videoURL = documentsDir.appendingPathComponent(session.videoFileName)
                                     let resultsURL = documentsDir.appendingPathComponent(session.resultsFileName)
@@ -62,15 +60,11 @@ struct LibraryView: View {
                                 }
                                 .tint(.blue)
 
-                                Button(action: onRename) {
-                                    Image(systemName: "pencil")
-                                        .font(.system(size: 12, weight: .semibold))
-                                        .foregroundStyle(.secondary)
-                                        .frame(width: 28, height: 28)
-                                        .background(.secondary.opacity(0.16), in: RoundedRectangle(cornerRadius: 6))
+                                Button() {
+                                    rename(session)
+                                } label: {
+                                    Label("Rename", systemImage: "pencil")
                                 }
-                                .buttonStyle(.borderless)
-                                .accessibilityLabel("Rename")
                                 
                             }
                         }
@@ -172,7 +166,7 @@ struct LibraryView: View {
         }
     }
 
-    private func prepareRename(_ session: Session) {
+    private func rename(_ session: Session) {
         sessionIDToRename = session.id
         renameText = session.name.isEmpty ? session.date.formatted(date: .abbreviated, time: .omitted) : session.name
         showRenameAlert = true
@@ -208,7 +202,6 @@ struct LibraryView: View {
 // MARK: - Session Row
 private struct SessionRow: View {
     let session: Session
-    let onRename: () -> Void
 
     var body: some View {
         HStack(spacing: 12) {
@@ -222,7 +215,9 @@ private struct SessionRow: View {
 
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 6) {
-                    Text(session.name.isEmpty ? (session.date, style: .date) : session.name)
+                    (session.name.isEmpty
+                        ? Text(session.date, style: .date)
+                        : Text(session.name))
                         .font(.headline)
                 }
 
