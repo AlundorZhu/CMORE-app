@@ -8,12 +8,6 @@
 import SwiftUI
 import Vision
 
-private enum NamingStage {
-    case idle
-    case choosing
-    case customEntry
-}
-
 struct StreamUI: View {
     @Environment(\.dismiss) private var dismiss
     
@@ -22,7 +16,7 @@ struct StreamUI: View {
     }
     
     @ObservedObject var viewModel: StreamViewModel
-    @State private var namingStage: NamingStage = .idle
+    @State private var showFileNamingSheet = false
     
     var body: some View {
         ZStack {
@@ -61,17 +55,6 @@ struct StreamUI: View {
                 CountdownOverlayView(count: count)	
             }
 
-            if namingStage == .customEntry {
-                FileNamingPopup(
-                    onGoBack: {
-                        namingStage = .choosing
-                    },
-                    onSave: { name in
-                        namingStage = .idle
-                        viewModel.saveSession(nameRequest: name)
-                    }
-                )
-            }
         }
         .background(Color.clear)
         .contentShape(Rectangle())
@@ -92,17 +75,20 @@ struct StreamUI: View {
         )
         .alert("Save session?", isPresented: $viewModel.showSaveConfirmation) {
             Button("Save") {
-                namingStage = .idle
                 viewModel.saveSession()
             }
             Button("Save As") {
-                namingStage = .customEntry
+                showFileNamingSheet = true
             }
             Button("Discard", role: .destructive) {
                 viewModel.discardSession()
             }
         } message: {
             Text("Save this recording to your library?")
+        }
+        .sheet(isPresented: $showFileNamingSheet) {
+            FileNamingSheet(viewModel: viewModel)
+                .interactiveDismissDisabled()
         }
         .alert("Camera need to see the box before starting counting blocks.", isPresented: $viewModel.askForBox) {
             Button("Resume") {
@@ -236,50 +222,38 @@ struct RecordingTimerView: View {
     }
 }
 
-struct FileNamingPopup: View {
-    let onGoBack: () -> Void
-    let onSave: (String) -> Void
+private struct FileNamingSheet: View {
+    let viewModel: StreamViewModel
+    @Environment(\.dismiss) private var dismiss
 
     @State private var customName: String = ""
+    @FocusState private var isFocused: Bool
 
     var body: some View {
-        ZStack {
-            Color.black.opacity(0.35)
-                .ignoresSafeArea()
+        VStack(spacing: 16) {
+            Text("Enter a custom file name")
+                .font(.headline)
 
-            VStack(spacing: 16) {
-                Text("Enter a custom file name")
-                    .font(.headline)
-
-                TextField("File name", text: $customName)
-                    .textFieldStyle(.roundedBorder)
-                    .autocorrectionDisabled()
-                    .padding(.horizontal, 4)
-
-                HStack(spacing: 12) {
-                    Button("Go Back") {
-                        onGoBack()
+            TextField("File name", text: $customName)
+                .textFieldStyle(.roundedBorder)
+                .autocorrectionDisabled()
+                .focused($isFocused)
+                .submitLabel(.done)
+                .onSubmit {
+                    let trimmed = customName.trimmingCharacters(in: .whitespacesAndNewlines)
+                    guard !trimmed.isEmpty else {
+                        // No buttons to recover with — keep the keyboard up
+                        isFocused = true
+                        return
                     }
-                    .buttonStyle(.bordered)
-
-                    Button("Save") {
-                        let trimmed = customName.trimmingCharacters(in: .whitespacesAndNewlines)
-                        guard !trimmed.isEmpty else { return }
-                        onSave(trimmed)
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .disabled(customName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    dismiss()
+                    viewModel.saveSession(nameRequest: trimmed)
                 }
-            }
-            .padding(24)
-            .frame(maxWidth: 320)
-            .background(.regularMaterial)
-            .clipShape(RoundedRectangle(cornerRadius: 16))
-            .shadow(radius: 20)
-            .padding(32)
         }
-        .transition(.opacity.combined(with: .scale(scale: 0.95)))
-        .animation(.easeInOut(duration: 0.2), value: customName.isEmpty)
+        .padding(24)
+        .onAppear {
+            isFocused = true
+        }
     }
 }
 

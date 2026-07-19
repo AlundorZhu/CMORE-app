@@ -254,8 +254,7 @@ struct CameraContainerView: View {
             }
             .onDisappear {
                 Task { @MainActor in
-                    OrientationManager.shared.setOrientation(.all)
-                }
+                    OrientationManager.shared.setOrientation(.all)                }
             }
             .onChange(of: viewModel.shouldDismissCamera) { _, shouldDismiss in
                 if shouldDismiss {

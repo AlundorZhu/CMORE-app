@@ -346,6 +346,7 @@ class StreamViewModel: ObservableObject {
         }
 
         cameraManager.stopRecording()
+        cameraManager.stop()
     }
 
     private func isBoxAligned(_ box: BoxDetection?) -> Bool {
