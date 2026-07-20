@@ -16,6 +16,7 @@ struct StreamUI: View {
     }
     
     @ObservedObject var viewModel: StreamViewModel
+    @State private var showFileNamingSheet = false
     
     var body: some View {
         ZStack {
@@ -51,8 +52,9 @@ struct StreamUI: View {
 
             // Countdown overlay
             if let count = viewModel.countdown {
-                CountdownOverlayView(count: count)
+                CountdownOverlayView(count: count)	
             }
+
         }
         .background(Color.clear)
         .contentShape(Rectangle())
@@ -75,11 +77,18 @@ struct StreamUI: View {
             Button("Save") {
                 viewModel.saveSession()
             }
+            Button("Save As") {
+                showFileNamingSheet = true
+            }
             Button("Discard", role: .destructive) {
                 viewModel.discardSession()
             }
         } message: {
             Text("Save this recording to your library?")
+        }
+        .sheet(isPresented: $showFileNamingSheet) {
+            FileNamingSheet(viewModel: viewModel)
+                .interactiveDismissDisabled()
         }
         .alert("Camera need to see the box before starting counting blocks.", isPresented: $viewModel.askForBox) {
             Button("Resume") {
@@ -210,6 +219,43 @@ struct RecordingTimerView: View {
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
         .background(.black.opacity(0.55), in: Capsule())
+    }
+}
+
+private struct FileNamingSheet: View {
+    let viewModel: StreamViewModel
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var customName: String = ""
+    @State private var prompt: String = "Enter a custom file name"
+    @FocusState private var isFocused: Bool
+
+    var body: some View {
+        VStack(spacing: 16) {
+            Text(prompt)
+                .font(.headline)
+
+            TextField("File name", text: $customName)
+                .textFieldStyle(.roundedBorder)
+                .autocorrectionDisabled()
+                .focused($isFocused)
+                .submitLabel(.done)
+                .onSubmit {
+                    let goodFileName = viewModel.checkExist(fileName: customName)
+                    if goodFileName == nil  {
+                        // No buttons to recover with — keep the keyboard up
+                        prompt = "That nane exists. Try another!"
+                        isFocused = true
+                        return
+                    }
+                    dismiss()
+                    viewModel.saveSession(nameRequest: goodFileName!)
+                }
+        }
+        .padding(24)
+        .onAppear {
+            isFocused = true
+        }
     }
 }
 

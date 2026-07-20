@@ -51,7 +51,7 @@ class VideoProcessingViewModel: ObservableObject {
         guard let videoURL, let handedness else { return }
 
         let documentsDir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-        let suffix = Date().timeIntervalSince1970
+        let suffix = String(Date().timeIntervalSince1970)
         let resultsFileName = "CMORE_Results_\(suffix).json"
         let resultsURL = documentsDir.appendingPathComponent(resultsFileName)
         dprint("Saved \(results.count) results to \(resultsURL.path)")
@@ -82,6 +82,7 @@ class VideoProcessingViewModel: ObservableObject {
         Task {
             do {
                 try await SessionStore.shared.add(
+                    name: suffix,
                     blockCount: blockCount,
                     videoFileName: videoFileName,
                     resultsFileName: resultsFileName,

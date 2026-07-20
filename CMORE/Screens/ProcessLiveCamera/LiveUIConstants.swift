@@ -6,6 +6,7 @@
 import CoreGraphics
 
 enum LiveUIConstants {
+    static let scaleFactor: CGFloat = 0.7
     // X-axis is mirrored exactly around 0.5
     static let backLeftX: CGFloat = 0.228
     static let backRightX: CGFloat = 1 - backLeftX

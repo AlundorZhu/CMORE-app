@@ -19,6 +19,9 @@ class StreamViewModel: ObservableObject {
     /// Whether to show the save confirmation dialog
     @Published var showSaveConfirmation = false
 
+    /// Signals that the camera screen can dismiss after the pending recording is handled.
+    @Published var shouldDismissCamera = false
+
     /// Show the visualization overlay in real-time
     @Published var overlay: FrameResult?
 
@@ -46,6 +49,7 @@ class StreamViewModel: ObservableObject {
 
     /// The URL of the current video being processed (temporary)
     private var currentVideoURL: URL?
+
 
     /// Suffix for both saved video and result
     private var fileNameSuffix: String?
@@ -140,9 +144,9 @@ class StreamViewModel: ObservableObject {
     }
 
     /// Saves the recording as a session (video stays in Documents, results written to JSON)
-    func saveSession() {
+    func saveSession(nameRequest: String? = nil) {
         guard let videoURL = currentVideoURL,
-              let fileNameSuffix = fileNameSuffix,
+              let defaultFileNameSuffix = fileNameSuffix,
               let result = result,
               !result.isEmpty,
               let recordingStartTime = recordingStartTime else {
@@ -150,9 +154,34 @@ class StreamViewModel: ObservableObject {
             return
         }
 
-        // Save results JSON
         let documentsDir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-        let resultsFileName = "CMORE_Results_\(fileNameSuffix).json"
+
+        let videoFileName: String
+        if let nameRequest {
+            videoFileName = "\(nameRequest).mov"
+        } else {
+            videoFileName = "CMORE_Recording_\(defaultFileNameSuffix).mov"
+        }
+
+        let finalVideoURL = documentsDir.appendingPathComponent(videoFileName)
+
+        if finalVideoURL != videoURL {
+            do {
+                try FileManager.default.moveItem(at: videoURL, to: finalVideoURL)
+                currentVideoURL = finalVideoURL
+            } catch {
+                print("Stream View Model: Error renaming recording: \(error)")
+            }
+        }
+
+        // Save results JSON
+        let resultsFileName: String
+        if let nameRequest {
+            resultsFileName = "\(nameRequest).json"
+        } else {
+            resultsFileName = "CMORE_Recording_\(defaultFileNameSuffix).json"
+        }
+
         let resultsURL = documentsDir.appendingPathComponent(resultsFileName)
 
         do {
@@ -169,11 +198,15 @@ class StreamViewModel: ObservableObject {
         // Compute block count from results
         let blockCount = result.compactMap(\.blockTransfered).max() ?? 0
 
+        // if not custom, should be empty
+        let sessionName = nameRequest ?? ""
+
         Task {
             do {
                 try await SessionStore.shared.add(
+                    name: sessionName,
                     blockCount: blockCount,
-                    videoFileName: videoURL.lastPathComponent,
+                    videoFileName: finalVideoURL.lastPathComponent,
                     resultsFileName: resultsFileName,
                     handedness: handedness
                 )
@@ -187,7 +220,23 @@ class StreamViewModel: ObservableObject {
             self.fileNameSuffix = nil
             self.recordingStartTime = nil
             self.showSaveConfirmation = false
+            self.shouldDismissCamera = true
         }
+    }
+    
+    func checkExist(fileName: String) -> String? {
+        let trimmed = fileName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        
+        let videoFileName = "\(fileName).mov"
+        let documentsDir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let finalVideoURL = documentsDir.appendingPathComponent(videoFileName)
+        if FileManager.default.fileExists(atPath: finalVideoURL.path) {return nil}
+
+        let invalidCharacters = CharacterSet(charactersIn: "/:")
+        return trimmed
+            .components(separatedBy: invalidCharacters)
+            .joined(separator: "-")
     }
 
     /// Discards the pending recording (video file + in-memory results)
@@ -202,6 +251,7 @@ class StreamViewModel: ObservableObject {
         recordingStartTime = nil
 
         showSaveConfirmation = false
+        shouldDismissCamera = true
     }
 
     /// Starts the camera feed and begins frame processing
@@ -215,6 +265,10 @@ class StreamViewModel: ObservableObject {
     }
 
     // MARK: - Private Methods
+    private func playSound(_ soundID: SystemSoundID) {
+        guard !UserDefaults.standard.bool(forKey: "soundMuted") else { return }
+        AudioServicesPlaySystemSound(soundID)
+    }
 
     /// Runs the 3-second countdown then starts video recording
     private func startRecording() {
@@ -230,6 +284,7 @@ class StreamViewModel: ObservableObject {
             for tick in [3, 2, 1] {
                 guard !Task.isCancelled else { return }
                 self.countdown = tick
+                self.playSound(1104)
                 try? await Task.sleep(nanoseconds: 1_000_000_000)
             }
             guard !Task.isCancelled else {
@@ -242,14 +297,15 @@ class StreamViewModel: ObservableObject {
     }
 
     private func actuallyStartRecording() {
-        if !UserDefaults.standard.bool(forKey: "soundMuted") { AudioServicesPlaySystemSound(1117) } // "begin recording" chime
+        self.playSound(1117) // "begin recording" chime
         isRecording = true
         recordingTimeRemaining = maxRecordingSeconds
 
         let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
-        let suffix = Date().timeIntervalSince1970
+
+        let suffix = String(Date().timeIntervalSince1970)
         let videoFileName = "CMORE_Recording_\(suffix).mov"
-        fileNameSuffix = String(suffix)
+        fileNameSuffix = suffix
         let outputURL = documentsPath.appendingPathComponent(videoFileName)
         currentVideoURL = outputURL
 
@@ -269,6 +325,7 @@ class StreamViewModel: ObservableObject {
                 self.recordingTimeRemaining = remaining
             }
             if !Task.isCancelled {
+                playSound(1005) // buzzer
                 self.stopRecording()
             }
         }
@@ -287,20 +344,26 @@ class StreamViewModel: ObservableObject {
         }
 
         cameraManager.stopRecording()
+        cameraManager.stop()
     }
 
     private func isBoxAligned(_ box: BoxDetection?) -> Bool {
         guard let box else { return false }
 
         // BoxShapeConstants use screen-space y (0 = top).
+        // The guide is drawn with .scaleEffect(scaleFactor), which scales around
+        // the view center (0.5, 0.5), so apply the same transform here.
         // NormalizedPoint stores Vision-space y (0 = bottom), so flip with (1 - y).
+        let scale = Double(LiveUIConstants.scaleFactor)
+        func scaled(_ v: CGFloat) -> Double { 0.5 + (Double(v) - 0.5) * scale }
+
         let checks: [(String, Double, Double)] = [
-            ("Back top left",      Double(LiveUIConstants.backLeftX),         1 - Double(LiveUIConstants.backRimY)),
-            ("Back top right",     Double(LiveUIConstants.backRightX),        1 - Double(LiveUIConstants.backRimY)),
-            ("Front top left",     Double(LiveUIConstants.frontTopLeftX),     1 - Double(LiveUIConstants.frontRimY)),
-            ("Front top right",    Double(LiveUIConstants.frontTopRightX),    1 - Double(LiveUIConstants.frontRimY)),
-            ("Front bottom left",  Double(LiveUIConstants.frontBottomLeftX),  1 - Double(LiveUIConstants.bottomY)),
-            ("Front bottom right", Double(LiveUIConstants.frontBottomRightX), 1 - Double(LiveUIConstants.bottomY)),
+            ("Back top left",      scaled(LiveUIConstants.backLeftX),         1 - scaled(LiveUIConstants.backRimY)),
+            ("Back top right",     scaled(LiveUIConstants.backRightX),        1 - scaled(LiveUIConstants.backRimY)),
+            ("Front top left",     scaled(LiveUIConstants.frontTopLeftX),     1 - scaled(LiveUIConstants.frontRimY)),
+            ("Front top right",    scaled(LiveUIConstants.frontTopRightX),    1 - scaled(LiveUIConstants.frontRimY)),
+            ("Front bottom left",  scaled(LiveUIConstants.frontBottomLeftX),  1 - scaled(LiveUIConstants.bottomY)),
+            ("Front bottom right", scaled(LiveUIConstants.frontBottomRightX), 1 - scaled(LiveUIConstants.bottomY)),
         ]
 
         return checks.allSatisfy { name, gx, gy in

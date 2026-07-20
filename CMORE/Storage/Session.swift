@@ -11,14 +11,16 @@ import Vision
 final class Session {
     @Attribute(.unique) var id: UUID
     var date: Date
+    var name: String = ""
     var blockCount: Int
     var videoFileName: String
     var resultsFileName: String
     var handedness: HumanHandPoseObservation.Chirality
 
-    init(id: UUID = UUID(), date: Date, blockCount: Int, videoFileName: String, resultsFileName: String, handedness: HumanHandPoseObservation.Chirality) {
+    init(id: UUID = UUID(), date: Date, name: String, blockCount: Int, videoFileName: String, resultsFileName: String, handedness: HumanHandPoseObservation.Chirality) {
         self.id = id
         self.date = date
+        self.name = name
         self.blockCount = blockCount
         self.videoFileName = videoFileName
         self.resultsFileName = resultsFileName
