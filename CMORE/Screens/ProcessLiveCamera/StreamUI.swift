@@ -227,11 +227,12 @@ private struct FileNamingSheet: View {
     @Environment(\.dismiss) private var dismiss
 
     @State private var customName: String = ""
+    @State private var prompt: String = "Enter a custom file name"
     @FocusState private var isFocused: Bool
 
     var body: some View {
         VStack(spacing: 16) {
-            Text("Enter a custom file name")
+            Text(prompt)
                 .font(.headline)
 
             TextField("File name", text: $customName)
@@ -240,14 +241,15 @@ private struct FileNamingSheet: View {
                 .focused($isFocused)
                 .submitLabel(.done)
                 .onSubmit {
-                    let trimmed = customName.trimmingCharacters(in: .whitespacesAndNewlines)
-                    guard !trimmed.isEmpty else {
+                    let goodFileName = viewModel.checkExist(fileName: customName)
+                    if goodFileName == nil  {
                         // No buttons to recover with — keep the keyboard up
+                        prompt = "That nane exists. Try another!"
                         isFocused = true
                         return
                     }
                     dismiss()
-                    viewModel.saveSession(nameRequest: trimmed)
+                    viewModel.saveSession(nameRequest: goodFileName!)
                 }
         }
         .padding(24)

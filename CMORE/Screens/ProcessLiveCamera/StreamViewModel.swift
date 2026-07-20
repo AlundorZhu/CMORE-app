@@ -156,11 +156,9 @@ class StreamViewModel: ObservableObject {
 
         let documentsDir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
 
-        let cleanFileNameRequest = sanitizedFileNameSuffix(nameRequest)
-
         let videoFileName: String
-        if let cleanFileNameRequest {
-            videoFileName = "\(cleanFileNameRequest).mov"
+        if let nameRequest {
+            videoFileName = "\(nameRequest).mov"
         } else {
             videoFileName = "CMORE_Recording_\(defaultFileNameSuffix).mov"
         }
@@ -169,9 +167,6 @@ class StreamViewModel: ObservableObject {
 
         if finalVideoURL != videoURL {
             do {
-                if FileManager.default.fileExists(atPath: finalVideoURL.path) {
-                    try FileManager.default.removeItem(at: finalVideoURL)
-                }
                 try FileManager.default.moveItem(at: videoURL, to: finalVideoURL)
                 currentVideoURL = finalVideoURL
             } catch {
@@ -181,8 +176,8 @@ class StreamViewModel: ObservableObject {
 
         // Save results JSON
         let resultsFileName: String
-        if let cleanFileNameRequest {
-            resultsFileName = "\(cleanFileNameRequest).json"
+        if let nameRequest {
+            resultsFileName = "\(nameRequest).json"
         } else {
             resultsFileName = "CMORE_Recording_\(defaultFileNameSuffix).json"
         }
@@ -204,7 +199,7 @@ class StreamViewModel: ObservableObject {
         let blockCount = result.compactMap(\.blockTransfered).max() ?? 0
 
         // if not custom, should be empty
-        let sessionName = cleanFileNameRequest ?? ""
+        let sessionName = nameRequest ?? ""
 
         Task {
             do {
@@ -227,6 +222,21 @@ class StreamViewModel: ObservableObject {
             self.showSaveConfirmation = false
             self.shouldDismissCamera = true
         }
+    }
+    
+    func checkExist(fileName: String) -> String? {
+        let trimmed = fileName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        
+        let videoFileName = "\(fileName).mov"
+        let documentsDir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let finalVideoURL = documentsDir.appendingPathComponent(videoFileName)
+        if FileManager.default.fileExists(atPath: finalVideoURL.path) {return nil}
+
+        let invalidCharacters = CharacterSet(charactersIn: "/:")
+        return trimmed
+            .components(separatedBy: invalidCharacters)
+            .joined(separator: "-")
     }
 
     /// Discards the pending recording (video file + in-memory results)
@@ -255,18 +265,6 @@ class StreamViewModel: ObservableObject {
     }
 
     // MARK: - Private Methods
-
-    private func sanitizedFileNameSuffix(_ name: String?) -> String? {
-        guard let name else { return nil }
-        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return nil }
-
-        let invalidCharacters = CharacterSet(charactersIn: "/:")
-        return trimmed
-            .components(separatedBy: invalidCharacters)
-            .joined(separator: "-")
-    }
-    
     private func playSound(_ soundID: SystemSoundID) {
         guard !UserDefaults.standard.bool(forKey: "soundMuted") else { return }
         AudioServicesPlaySystemSound(soundID)
