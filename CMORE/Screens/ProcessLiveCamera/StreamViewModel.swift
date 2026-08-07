@@ -18,6 +18,9 @@ class StreamViewModel: ObservableObject {
 
     /// Whether to show the save confirmation dialog
     @Published var showSaveConfirmation = false
+    
+    /// Whether to show the start confirmation process
+    @Published var showStartConfirmation = false
 
     /// Signals that the camera screen can dismiss after the pending recording is handled.
     @Published var shouldDismissCamera = false
@@ -50,9 +53,12 @@ class StreamViewModel: ObservableObject {
     /// The URL of the current video being processed (temporary)
     private var currentVideoURL: URL?
 
-
     /// Suffix for both saved video and result
-    private var fileNameSuffix: String?
+    private var fileNameModified: Bool = false
+    
+    private var videoFileName: String = ""
+    
+    private var resultsFileName: String = ""
 
     /// Timestamp for the start
     private var recordingStartTime: CMTime?
@@ -126,7 +132,9 @@ class StreamViewModel: ObservableObject {
         } else if isRecording {
             stopRecording()
         } else {
-            startRecording()
+            if (self.startConditionsMet()) {
+                self.showStartConfirmation = true
+            }
         }
     }
 
@@ -146,7 +154,6 @@ class StreamViewModel: ObservableObject {
     /// Saves the recording as a session (video stays in Documents, results written to JSON)
     func saveSession(nameRequest: String? = nil) {
         guard let videoURL = currentVideoURL,
-              let defaultFileNameSuffix = fileNameSuffix,
               let result = result,
               !result.isEmpty,
               let recordingStartTime = recordingStartTime else {
@@ -156,11 +163,10 @@ class StreamViewModel: ObservableObject {
 
         let documentsDir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
 
-        let videoFileName: String
         if let nameRequest {
             videoFileName = "\(nameRequest).mov"
-        } else {
-            videoFileName = "CMORE_Recording_\(defaultFileNameSuffix).mov"
+            resultsFileName = "\(nameRequest).json"
+            fileNameModified = true
         }
 
         let finalVideoURL = documentsDir.appendingPathComponent(videoFileName)
@@ -175,12 +181,6 @@ class StreamViewModel: ObservableObject {
         }
 
         // Save results JSON
-        let resultsFileName: String
-        if let nameRequest {
-            resultsFileName = "\(nameRequest).json"
-        } else {
-            resultsFileName = "CMORE_Recording_\(defaultFileNameSuffix).json"
-        }
 
         let resultsURL = documentsDir.appendingPathComponent(resultsFileName)
 
@@ -199,12 +199,12 @@ class StreamViewModel: ObservableObject {
         let blockCount = result.compactMap(\.blockTransfered).max() ?? 0
 
         // if not custom, should be empty
-        let sessionName = nameRequest ?? ""
+        let sessionName = (fileNameModified) ? nameRequest : ""
 
         Task {
             do {
                 try await SessionStore.shared.add(
-                    name: sessionName,
+                    name: sessionName!,
                     blockCount: blockCount,
                     videoFileName: finalVideoURL.lastPathComponent,
                     resultsFileName: resultsFileName,
@@ -217,10 +217,10 @@ class StreamViewModel: ObservableObject {
             // Clean up state
             self.currentVideoURL = nil
             self.result = nil
-            self.fileNameSuffix = nil
             self.recordingStartTime = nil
             self.showSaveConfirmation = false
             self.shouldDismissCamera = true
+            self.fileNameModified = false
         }
     }
     
@@ -247,8 +247,8 @@ class StreamViewModel: ObservableObject {
 
         currentVideoURL = nil
         result = nil
-        fileNameSuffix = nil
         recordingStartTime = nil
+        fileNameModified = false
 
         showSaveConfirmation = false
         shouldDismissCamera = true
@@ -263,28 +263,17 @@ class StreamViewModel: ObservableObject {
             await frameProcessor.startProcessing(stream: stream)
         }
     }
-
-    // MARK: - Private Methods
-    private func playSound(_ soundID: SystemSoundID) {
-        guard !UserDefaults.standard.bool(forKey: "soundMuted") else { return }
-        AudioServicesPlaySystemSound(soundID)
-    }
-
+    
     /// Runs the 3-second countdown then starts video recording
-    private func startRecording() {
-        guard !isRecording && countdown == nil else { return }
-        guard overlay?.boxDetection != nil else {
-            askForBox = true
-            return
-        }
-
+    func startRecording(nameRequest: String? = nil) {
+        self.showStartConfirmation = false
         countdownTask = Task { @MainActor [weak self] in
             guard let self else { return }
             Task { await self.frameProcessor.warmup() }
             for tick in [3, 2, 1] {
                 guard !Task.isCancelled else { return }
                 self.countdown = tick
-                self.playSound(1104)
+                self.playUnmutableSound("countdown_\(tick).mp3")
                 try? await Task.sleep(nanoseconds: 1_000_000_000)
             }
             guard !Task.isCancelled else {
@@ -292,20 +281,51 @@ class StreamViewModel: ObservableObject {
                 return
             }
             self.countdown = nil
-            self.actuallyStartRecording()
+            self.actuallyStartRecording(nameRequest)
         }
     }
 
-    private func actuallyStartRecording() {
-        self.playSound(1117) // "begin recording" chime
+    // MARK: - Private Methods
+    private func startConditionsMet() -> Bool {
+        guard !isRecording && countdown == nil else { return false }
+        guard overlay?.boxDetection != nil else {
+            askForBox = true
+            return false
+        }
+        
+        return true
+    }
+    
+    private func playUnmutableSound(_ soundFileName: String) {
+        var soundEffect: AVAudioPlayer?
+        let path = Bundle.main.path(forResource: soundFileName, ofType:nil)!
+        let url = URL(fileURLWithPath: path)
+
+        do {
+            soundEffect = try AVAudioPlayer(contentsOf: url)
+            soundEffect?.play()
+        } catch {
+            dprint("StreamViewModel: failed to find sound file")
+        }
+    }
+
+    private func actuallyStartRecording(_ nameRequest: String? = nil) {
+        self.playUnmutableSound("beep.mp3") // "begin recording" chime
         isRecording = true
         recordingTimeRemaining = maxRecordingSeconds
 
         let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
 
-        let suffix = String(Date().timeIntervalSince1970)
-        let videoFileName = "CMORE_Recording_\(suffix).mov"
-        fileNameSuffix = suffix
+        if (nameRequest != nil) {
+            videoFileName = "\(nameRequest!).mov"
+            resultsFileName = "\(nameRequest!).csv"
+            fileNameModified = true
+        } else {
+            let suffix = String(Date().timeIntervalSince1970)
+            videoFileName = "CMORE_Recording_\(suffix).mov"
+            resultsFileName = "CMORE_Recording_\(suffix).json"
+        }
+        
         let outputURL = documentsPath.appendingPathComponent(videoFileName)
         currentVideoURL = outputURL
 
@@ -325,7 +345,7 @@ class StreamViewModel: ObservableObject {
                 self.recordingTimeRemaining = remaining
             }
             if !Task.isCancelled {
-                playSound(1005) // buzzer
+                self.playUnmutableSound("beep.mp3")
                 self.stopRecording()
             }
         }

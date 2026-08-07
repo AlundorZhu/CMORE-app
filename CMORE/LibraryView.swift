@@ -106,7 +106,6 @@ struct LibraryView: View {
                         showPhotoPicker = true
                     }
                 }
-                Button("Cancel", role: .cancel) {}
             }
             .navigationDestination(isPresented: $navigateToCamera) {
                 CameraContainerView()
